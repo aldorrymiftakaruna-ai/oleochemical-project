@@ -108,6 +108,62 @@
                     @enderror
                 </div>
 
+                {{-- ── Field CM / Pekerjaan ── --}}
+                <div class="border-t border-slate-100 pt-4">
+                    <h3 class="text-sm font-medium text-slate-900 mb-3">Klasifikasi Pekerjaan</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                        <div>
+                            <label for="jenis_pekerjaan" class="block text-sm font-medium text-slate-700 mb-1">Jenis Pekerjaan</label>
+                            <select id="jenis_pekerjaan" name="jenis_pekerjaan"
+                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">- Pilih -</option>
+                                <option value="CM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'CM' ? 'selected' : '' }}>CM (Corrective)</option>
+                                <option value="dCM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'dCM' ? 'selected' : '' }}>dCM (Deferred)</option>
+                                <option value="PM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'PM' ? 'selected' : '' }}>PM (Preventive)</option>
+                            </select>
+                            @error('jenis_pekerjaan')
+                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="sesuai_rencana" class="block text-sm font-medium text-slate-700 mb-1">Sesuai Rencana (wajib jika dCM)</label>
+                            <select id="sesuai_rencana" name="sesuai_rencana"
+                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">- Pilih -</option>
+                                <option value="ya" {{ old('sesuai_rencana', $report->sesuai_rencana) === 'ya' ? 'selected' : '' }}>Ya</option>
+                                <option value="tidak" {{ old('sesuai_rencana', $report->sesuai_rencana) === 'tidak' ? 'selected' : '' }}>Tidak</option>
+                            </select>
+                            @error('sesuai_rencana')
+                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="tanggal_kejadian" class="block text-sm font-medium text-slate-700 mb-1">Tanggal Kejadian</label>
+                            <input type="date" id="tanggal_kejadian" name="tanggal_kejadian"
+                                   value="{{ old('tanggal_kejadian', $report->tanggal_kejadian?->format('Y-m-d')) }}"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            @error('tanggal_kejadian')
+                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="equipment_tag" class="block text-sm font-medium text-slate-700 mb-1">Equipment Tag</label>
+                            <input type="text" id="equipment_tag" name="equipment_tag"
+                                   value="{{ old('equipment_tag', $report->equipment_tag) }}"
+                                   placeholder="Tag equipment dari CM master"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            @error('equipment_tag')
+                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                    </div>
+                </div>
+
                 <div class="flex items-center gap-3 pt-2">
                     <button type="submit"
                             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">

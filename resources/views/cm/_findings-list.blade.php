@@ -1,3 +1,4 @@
+
 @forelse($findings as $finding)
     <div class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-sm transition-shadow">
         <div class="flex items-start justify-between gap-4">
@@ -23,6 +24,26 @@
                         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
                             <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                             Closed
+                        </span>
+                    @endif
+
+                    {{-- Indikator tindak lanjut (Work Order) --}}
+                    @php
+                        $wo = $finding->workOrder()->first();
+                    @endphp
+                    @if($wo)
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                            </svg>
+                            Ada WO
+                        </span>
+                    @elseif($finding->status === 'open')
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                            </svg>
+                            Belum WO
                         </span>
                     @endif
                 </div>
@@ -55,6 +76,25 @@
                             </svg>
                             {{ $finding->hari_open }} hari open
                         </span>
+                    @endif
+
+                    {{-- Link ke Work Order jika ada --}}
+                    @if($wo)
+                        <a href="{{ route('work-orders.show', $wo) }}"
+                           class="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 font-medium">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                            </svg>
+                            Lihat WO
+                        </a>
+                    @elseif($finding->status === 'open')
+                        <a href="{{ route('work-orders.create', ['equipment_tag' => $finding->equipment->equipment_tag, 'linked_finding_id' => $finding->id]) }}"
+                           class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-medium">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Buat WO
+                        </a>
                     @endif
                 </div>
             </div>

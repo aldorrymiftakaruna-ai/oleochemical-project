@@ -78,8 +78,8 @@
                     </div>
                 </div>
 
-                {{-- Baris 2: tanggal, area, status, tipe, foto --}}
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {{-- Baris 2: tanggal, area, status, tipe, jenis --}}
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Tanggal Dari</label>
                         <input type="date" name="date_from" value="{{ request('date_from') }}"
@@ -123,6 +123,16 @@
                             <option value="general" {{ request('report_type') === 'general' ? 'selected' : '' }}>Umum</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Jenis Pekerjaan</label>
+                        <select name="jenis_pekerjaan"
+                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Semua Jenis</option>
+                            <option value="CM" {{ request('jenis_pekerjaan') === 'CM' ? 'selected' : '' }}>CM (Corrective)</option>
+                            <option value="dCM" {{ request('jenis_pekerjaan') === 'dCM' ? 'selected' : '' }}>dCM (Deferred)</option>
+                            <option value="PM" {{ request('jenis_pekerjaan') === 'PM' ? 'selected' : '' }}>PM (Preventive)</option>
+                        </select>
+                    </div>
                 </div>
 
                 {{-- Baris 3: filter foto + tombol aksi --}}
@@ -152,36 +162,23 @@
         </div>
     </div>
 
-    {{-- ── Summary Strip ─────────────────────────────────────── --}}
-    @php
-        // Angka dihitung dari paginator yang sudah ada — tanpa query tambahan.
-        // $reports->total() = total semua baris (seluruh halaman) sesuai filter aktif.
-        $totalLaporan = $reports->total();
-
-        // Hitung draft dan selesai dari koleksi halaman ini (approximasi cepat).
-        // Untuk akurasi full-dataset, query terpisah diperlukan; ini sengaja dihindari
-        // agar tidak menambah beban query sesuai spesifikasi PLAN.
-        $draftCount     = $reports->getCollection()->where('status', 'draft')->count();
-        $completedCount = $reports->getCollection()->where('status', 'completed')->count();
-        $reviewCount    = $reports->getCollection()->where('status', 'needs_review')->count();
-    @endphp
-
+    {{-- ── Summary Cards ─────────────────────────────────────── --}}
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-xs text-slate-500">Total (filter)</p>
-            <p class="text-xl font-semibold text-slate-900 mt-0.5">{{ number_format($totalLaporan) }}</p>
+            <p class="text-2xl font-bold text-red-600">{{ number_format($countCM) }}</p>
+            <p class="text-xs text-slate-500 mt-1">CM (Corrective)</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-xs text-slate-500">Draft (halaman ini)</p>
-            <p class="text-xl font-semibold text-slate-600 mt-0.5">{{ $draftCount }}</p>
+        <div class="bg-white rounded-xl border border-amber-200 px-4 py-3">
+            <p class="text-2xl font-bold text-amber-600">{{ number_format($countDCM) }}</p>
+            <p class="text-xs text-slate-500 mt-1">dCM (Deferred)</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-xs text-slate-500">Perlu Review (halaman ini)</p>
-            <p class="text-xl font-semibold text-amber-600 mt-0.5">{{ $reviewCount }}</p>
+        <div class="bg-white rounded-xl border border-blue-200 px-4 py-3">
+            <p class="text-2xl font-bold text-blue-600">{{ number_format($countPM) }}</p>
+            <p class="text-xs text-slate-500 mt-1">PM (Preventive)</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-xs text-slate-500">Selesai (halaman ini)</p>
-            <p class="text-xl font-semibold text-green-600 mt-0.5">{{ $completedCount }}</p>
+        <div class="bg-white rounded-xl border border-teal-200 px-4 py-3">
+            <p class="text-2xl font-bold text-teal-600">{{ number_format($totalLaporan) }}</p>
+            <p class="text-xs text-slate-500 mt-1">Total Laporan</p>
         </div>
     </div>
 
@@ -197,6 +194,7 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Lokasi / Alat</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Durasi & Foto</th>
+                        <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Jenis</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tipe & AI</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 sr-only">Aksi</th>
@@ -204,6 +202,14 @@
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                     @forelse($reports as $report)
+                        @php
+                            $jenisColors = [
+                                'CM'  => 'bg-red-100 text-red-700 border-red-200',
+                                'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
+                                'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                            ];
+                            $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
+                        @endphp
                         {{-- Seluruh baris bisa diklik ke halaman detail --}}
                         <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
                             onclick="window.location='{{ route('reports.show', $report) }}'">
@@ -274,6 +280,17 @@
                                 </p>
                             </td>
 
+                            {{-- Jenis Pekerjaan (CM/dCM/PM) --}}
+                            <td class="px-5 py-3.5 text-center">
+                                @if($report->jenis_pekerjaan)
+                                    <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                                        {{ $report->jenis_pekerjaan }}
+                                    </span>
+                                @else
+                                    <span class="text-slate-300 text-xs">—</span>
+                                @endif
+                            </td>
+
                             {{-- Tipe & AI: digabung --}}
                             <td class="px-5 py-3.5">
                                 <x-status-badge :status="$report->report_type" />
@@ -314,7 +331,7 @@
                     @empty
                         {{-- Empty state dengan ilustrasi SVG sederhana --}}
                         <tr>
-                            <td colspan="9" class="px-5 py-16 text-center">
+                            <td colspan="10" class="px-5 py-16 text-center">
                                 <div class="flex flex-col items-center gap-3">
                                     <svg class="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 48 48">
                                         <rect x="8" y="6" width="32" height="36" rx="4" fill="currentColor" opacity=".4"/>

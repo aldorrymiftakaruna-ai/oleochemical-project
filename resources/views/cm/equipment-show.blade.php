@@ -42,7 +42,16 @@
                 @endif
             </p>
             <p class="text-sm text-slate-700 mt-1">
-                {{ $equipment->asset?->description ?? 'Tidak ada data asset' }}
+                @if($equipment->asset)
+                    {{ $equipment->asset->description }}
+                @else
+                    <span class="text-amber-600">Asset belum terdaftar di Asset Management.</span>
+                    <a href="{{ route('assets.create') }}?equipment_no={{ urlencode($equipment->equipment_tag) }}"
+                       class="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800 hover:underline font-medium ml-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Tambah Asset
+                    </a>
+                @endif
             </p>
         </div>
         <div class="shrink-0">
@@ -161,10 +170,51 @@
         </div>
     </div>
     <div class="relative" style="height: 300px;">
-        <canvas id="vibrationChart"></canvas>
+        <canvas id="vibrationChart" name="vibrationChart"></canvas>
     </div>
 </div>
 @endif
+
+{{-- Card Insight Trend Vibrasi — hanya muncul jika ada kenaikan signifikan --}}
+@if($vibrationInsight)
+<div class="rounded-xl border border-amber-300 bg-amber-50 p-5 mb-6">
+    <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-full bg-amber-200 flex items-center justify-center shrink-0 mt-0.5">
+            <svg class="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+            <h4 class="text-sm font-semibold text-amber-900">⚠ Insight — Tren Vibrasi</h4>
+            <p class="text-sm text-amber-800 mt-1">{{ $vibrationInsight['message'] }}</p>
+            <div class="flex flex-wrap gap-2 mt-3">
+                <a href="{{ route('cm.findings') }}?equipment_tag={{ urlencode($equipment->equipment_tag) }}"
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-lg transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Buat Finding Baru
+                </a>
+                <span class="text-xs text-amber-600 self-center">atau <a href="#vibrationChart" class="underline hover:text-amber-800">Lihat detail trend</a></span>
+            </div>
+            @if($vibrationInsight['projected_days_to_danger'])
+                <p class="text-xs text-amber-600 mt-2">
+                    <span class="font-medium">Rekomendasi:</span> jadwalkan PdM inspection / tindak lanjut
+                    sebelum ~{{ $vibrationInsight['projected_days_to_danger'] }} hari ke depan (proyeksi menyentuh batas Danger).
+                </p>
+            @elseif($vibrationInsight['projected_days_to_alarm'])
+                <p class="text-xs text-amber-600 mt-2">
+                    <span class="font-medium">Rekomendasi:</span> jadwalkan PdM inspection / tindak lanjut
+                    sebelum ~{{ $vibrationInsight['projected_days_to_alarm'] }} hari ke depan (proyeksi menyentuh batas Alarm).
+                </p>
+            @else
+                <p class="text-xs text-amber-600 mt-2">
+                    <span class="font-medium">Rekomendasi:</span> lakukan PdM inspection untuk tindak lanjut.
+                </p>
+            @endif
+        </div>
+    </div>
+</div>
+@endif
+
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
     <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-slate-900">Riwayat Pembacaan</h3>

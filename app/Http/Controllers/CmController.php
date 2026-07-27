@@ -9,6 +9,8 @@ use App\Models\CmEquipment;
 use App\Models\CmFinding;
 use App\Models\CmMonthlyTracking;
 use App\Models\CmReading;
+use App\Models\Report;
+use App\Models\WorkOrder;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -288,7 +290,11 @@ class CmController extends Controller
         $totalFindingsOpen   = $equipment->findings->where('status', 'open')->count();
         $totalFindingsClosed = $equipment->findings->where('status', 'closed')->count();
 
-        // --- MTBF Calculation ---
+        // ------------------------------------------------------------------
+        // MTBF, Total Failures & Last Failure — dari tabel Reports (Laporan)
+        // Sumber: Report dengan jenis_pekerjaan IN ('CM','dCM') untuk
+        // equipment ini, dalam rentang filter yang aktif.
+        // ------------------------------------------------------------------
         $mtbfData = [
             'mtbf'          => '-',
             'total_failures' => 0,
@@ -296,36 +302,61 @@ class CmController extends Controller
             'days_since'     => null,
         ];
 
-        if ($equipment->asset) {
-            $repairReports = $equipment->asset->reports()
-                ->where('report_type', 'equipment_repair')
-                ->where('status', 'completed')
-                ->orderBy('report_date', 'asc')
-                ->get();
+        $failureReportsQuery = Report::where('equipment_tag', $equipment->equipment_tag)
+            ->whereIn('jenis_pekerjaan', ['CM', 'dCM']);
 
-            if ($repairReports->isNotEmpty()) {
-                $totalFailures = $repairReports->count();
-                $lastFailure   = $repairReports->last()->report_date;
-                $daysSince     = now()->startOfDay()->diffInDays($lastFailure);
-
-                if ($totalFailures >= 2) {
-                    $diffs = [];
-                    for ($i = 1; $i < $totalFailures; $i++) {
-                        $diffs[] = $repairReports[$i]->report_date->diffInDays($repairReports[$i - 1]->report_date);
-                    }
-                    $mtbf = count($diffs) > 0 ? array_sum($diffs) / count($diffs) : 0;
-                } else {
-                    $mtbf = now()->startOfDay()->diffInDays($repairReports->first()->report_date);
-                }
-
-                $mtbfData = [
-                    'mtbf'          => round($mtbf, 1),
-                    'total_failures' => $totalFailures,
-                    'last_failure'   => $lastFailure->format('d M Y'),
-                    'days_since'     => $daysSince,
-                ];
-            }
+        // Terapkan filter rentang waktu
+        if ($range !== 'all') {
+            $days = (int) $range;
+            $failureReportsQuery->where(function ($q) use ($days) {
+                $q->where('tanggal_kejadian', '>=', now()->subDays($days))
+                  ->orWhere(function ($sq) use ($days) {
+                      $sq->whereNull('tanggal_kejadian')
+                         ->where('report_date', '>=', now()->subDays($days));
+                  });
+            });
         }
+
+        $failureReports = $failureReportsQuery
+            ->orderByRaw('COALESCE(tanggal_kejadian, report_date) ASC')
+            ->get(['tanggal_kejadian', 'report_date']);
+
+        if ($failureReports->isNotEmpty()) {
+            $totalFailures = $failureReports->count();
+
+            // Last failure = tanggal_kejadian terakhir (atau report_date jika null)
+            $lastReport  = $failureReports->last();
+            $lastFailure = $lastReport->tanggal_kejadian ?? $lastReport->report_date;
+            $daysSince   = $lastFailure ? now()->startOfDay()->diffInDays($lastFailure) : null;
+
+            // Hitung MTBF
+            $dates = $failureReports->map(function ($r) {
+                return $r->tanggal_kejadian ?? $r->report_date;
+            })->filter()->sort()->values();
+
+            if ($dates->count() >= 2) {
+                $diffs = [];
+                for ($i = 1; $i < $dates->count(); $i++) {
+                    $diffs[] = $dates[$i]->diffInDays($dates[$i - 1]);
+                }
+                $mtbf = count($diffs) > 0 ? array_sum($diffs) / count($diffs) : 0;
+            } else {
+                // Hanya 1 failure — MTBF = jarak dari tanggal failure ke sekarang
+                $mtbf = $dates->first() ? now()->startOfDay()->diffInDays($dates->first()) : 0;
+            }
+
+            $mtbfData = [
+                'mtbf'           => round($mtbf, 1),
+                'total_failures' => $totalFailures,
+                'last_failure'   => $lastFailure ? $lastFailure->format('d M Y') : null,
+                'days_since'     => $daysSince,
+            ];
+        }
+
+        // ------------------------------------------------------------------
+        // Insight Trend Vibrasi Motor — deteksi slope/kenaikan signifikan
+        // ------------------------------------------------------------------
+        $vibrationInsight = $this->detectVibrationTrend($chartData);
 
         return view('cm.equipment-show', compact(
             'equipment',
@@ -337,7 +368,8 @@ class CmController extends Controller
             'range',
             'totalFindingsOpen',
             'totalFindingsClosed',
-            'mtbfData'
+            'mtbfData',
+            'vibrationInsight'
         ));
     }
 
@@ -569,6 +601,167 @@ class CmController extends Controller
             'dangerCount', 'dangerPct',
             'visualBadCount', 'visualBadPct'
         ));
+    }
+
+    /**
+     * Deteksi trend kenaikan vibrasi motor (NDEV, NDEH, NDEA) dari data
+     * chart yang sudah di-sort ascending. Mengembalikan array insight
+     * atau null jika tidak ada kenaikan signifikan.
+     *
+     * @param  \Illuminate\Support\Collection  $chartData  collection of {tanggal, ndev_motor, ndeh_motor, ndea_motor}
+     * @return array|null  ['parameter', 'from_val', 'to_val', 'days_span', 'projection_days', 'message']
+     */
+    private function detectVibrationTrend($chartData): ?array
+    {
+        $config      = config('cm.vibration_insight');
+        $minPoints   = $config['min_data_points'] ?? 3;
+        $risePct     = $config['significant_rise_pct'] ?? 20;
+        $baselineCnt = $config['baseline_count'] ?? 3;
+        $projDays    = $config['projection_days'] ?? 30;
+        $alarmThr    = $config['thresholds']['alarm'] ?? 7.1;
+        $dangerThr   = $config['thresholds']['danger'] ?? 11.2;
+
+        if (!$chartData || $chartData->count() < $minPoints) {
+            return null;
+        }
+
+        // Parameter motor yang dipantau untuk insight
+        $params = [
+            ['key' => 'ndev_motor', 'label' => 'NDEV'],
+            ['key' => 'ndeh_motor', 'label' => 'NDEH'],
+            ['key' => 'ndea_motor', 'label' => 'NDEA'],
+        ];
+
+        $data = $chartData->values();
+
+        foreach ($params as $param) {
+            $key = $param['key'];
+
+            // Ambil N titik terakhir yang tidak null
+            $recentValues = $data->pluck($key)->filter(function ($v) {
+                return $v !== null && $v !== '';
+            })->values();
+
+            if ($recentValues->count() < $minPoints) {
+                continue;
+            }
+
+            // Ambil N titik terakhir
+            $lastN = $recentValues->slice(-$minPoints);
+
+            // Hitung slope (linear regression) dari titik terakhir
+            $indices = range(0, $lastN->count() - 1);
+            $vals    = $lastN->values()->toArray();
+
+            $slope = $this->calculateSlope($indices, $vals);
+
+            // Jika slope negatif atau mendekati nol — stabil/menurun, skip
+            if ($slope <= 0.001) {
+                continue;
+            }
+
+            // Ambil rata-rata baseline (N titik sebelum titik terakhir)
+            $baselineValues = $recentValues->slice(-$minPoints - $baselineCnt, $baselineCnt);
+
+            if ($baselineValues->count() < 1) {
+                continue;
+            }
+
+            $baselineAvg = $baselineValues->avg();
+            $latestVal   = $lastN->last();
+
+            // Bandingkan kenaikan persentase terhadap rata-rata baseline
+            $riseRatio = $baselineAvg > 0 ? (($latestVal - $baselineAvg) / $baselineAvg) * 100 : 0;
+
+            if ($riseRatio < $risePct) {
+                // Cek proyeksi ke batas danger
+                $daysToDanger = $slope > 0 ? ($dangerThr - $latestVal) / $slope : PHP_FLOAT_MAX;
+
+                if ($daysToDanger > $projDays) {
+                    continue; // Tidak signifikan dan tidak dalam jangka waktu proyeksi
+                }
+            }
+
+            // Hitung selisih hari antara titik pertama dan terakhir
+            $firstDate = $data[$data->count() - $lastN->count()]['tanggal'] ?? null;
+            $lastDate  = $data->last()['tanggal'] ?? null;
+            $daysSpan  = 0;
+            if ($firstDate && $lastDate) {
+                $daysSpan = \Carbon\Carbon::parse($lastDate)->diffInDays(\Carbon\Carbon::parse($firstDate));
+            }
+
+            // Dari nilai awal ke nilai akhir
+            $fromVal = $lastN->first();
+            $toVal   = $latestVal;
+
+            // Proyeksi ke batas danger
+            $projectedDaysToDanger = $slope > 0 ? ($dangerThr - $latestVal) / $slope : PHP_FLOAT_MAX;
+            $projectedDaysToAlarm  = $slope > 0 ? ($alarmThr - $latestVal) / $slope : PHP_FLOAT_MAX;
+
+            $projectionMsg = '';
+            $nearestDays   = null;
+
+            if ($projectedDaysToDanger <= $projDays && $projectedDaysToDanger > 0) {
+                $nearestDays = ceil($projectedDaysToDanger);
+                $projectionMsg = "Proyeksi menyentuh batas Danger dalam ~{$nearestDays} hari.";
+            } elseif ($projectedDaysToAlarm <= $projDays && $projectedDaysToAlarm > 0) {
+                $nearestDays = ceil($projectedDaysToAlarm);
+                $projectionMsg = "Proyeksi menyentuh batas Alarm dalam ~{$nearestDays} hari.";
+            }
+
+            return [
+                'parameter'    => $param['label'],
+                'from_val'     => number_format($fromVal, 2),
+                'to_val'       => number_format($toVal, 2),
+                'days_span'    => $daysSpan,
+                'rise_pct'     => round($riseRatio, 1),
+                'slope'        => round($slope, 4),
+                'projected_days_to_danger' => $projectedDaysToDanger > 0 && $projectedDaysToDanger < PHP_FLOAT_MAX
+                    ? ceil($projectedDaysToDanger) : null,
+                'projected_days_to_alarm'  => $projectedDaysToAlarm > 0 && $projectedDaysToAlarm < PHP_FLOAT_MAX
+                    ? ceil($projectedDaysToAlarm) : null,
+                'projection_message' => $projectionMsg,
+                'message'      => "Tren vibrasi {$param['label']} naik signifikan (dari "
+                    . number_format($fromVal, 2) . " mm/s ke " . number_format($toVal, 2)
+                    . " mm/s dalam {$daysSpan} hari terakhir, kenaikan {$riseRatio}%). "
+                    . $projectionMsg,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Hitung slope (koefisien linear) dari serangkaian data (x, y).
+     * Menggunakan metode least squares sederhana.
+     *
+     * @param  array  $x  Index/nilai sumbu X (hari ke-0, 1, 2, ...)
+     * @param  array  $y  Nilai sumbu Y (mm/s)
+     * @return float
+     */
+    private function calculateSlope(array $x, array $y): float
+    {
+        $n = count($x);
+        if ($n < 2) {
+            return 0;
+        }
+
+        $sumX  = array_sum($x);
+        $sumY  = array_sum($y);
+        $sumXY = 0;
+        $sumX2 = 0;
+
+        for ($i = 0; $i < $n; $i++) {
+            $sumXY += $x[$i] * $y[$i];
+            $sumX2 += $x[$i] * $x[$i];
+        }
+
+        $denom = ($n * $sumX2 - $sumX * $sumX);
+        if ($denom == 0) {
+            return 0;
+        }
+
+        return ($n * $sumXY - $sumX * $sumY) / $denom;
     }
 
     /**

@@ -36,15 +36,21 @@ class CmEquipment extends Model
     }
 
     /**
-     * Relasi ke Asset (Asset Management) — cocokkan equipment_tag dengan
-     * equipment_no atau tech_ident_no di tabel assets.
-     * Null jika tidak ada asset yang cocok.
+     * Relasi ke Asset (Asset Management).
+     *
+     * Mencocokkan cm_equipment.equipment_tag dengan assets.tech_ident_no.
+     * Jika tidak ada yang cocok, fallback ke assets.equipment_no.
+     *
+     * CATATAN: Relasi belongsTo hanya 1:1. Karena bisa ada beberapa asset
+     * dengan tech_ident_no yang sama (misal pompa + motor), relasi ini
+     * mengembalikan yang pertama ditemukan. Untuk mengambil semua asset
+     * terkait, gunakan method allAssets().
      *
      * @return BelongsTo<Asset, CmEquipment>
      */
     public function asset(): BelongsTo
     {
-        return $this->belongsTo(Asset::class, 'equipment_tag', 'equipment_no');
+        return $this->belongsTo(Asset::class, 'equipment_tag', 'tech_ident_no');
     }
 
     /**

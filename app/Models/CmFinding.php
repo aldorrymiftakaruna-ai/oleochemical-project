@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class CmFinding extends Model
 {
@@ -47,5 +48,16 @@ class CmFinding extends Model
     public function reading(): BelongsTo
     {
         return $this->belongsTo(CmReading::class, 'cm_reading_id');
+    }
+
+    /**
+     * Relasi ke Work Order yang berasal dari finding ini.
+     * Satu finding bisa menghasilkan satu work order.
+     *
+     * @return HasOne<WorkOrder>
+     */
+    public function workOrder(): HasOne
+    {
+        return $this->hasOne(WorkOrder::class, 'linked_finding_id');
     }
 }

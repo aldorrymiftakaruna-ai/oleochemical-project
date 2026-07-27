@@ -8,9 +8,11 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Controllers\WorkOrderController;
 use Illuminate\Support\Facades\Route;
 
 // Login routes (no auth)
@@ -105,6 +107,9 @@ Route::middleware('admin')->group(function () {
     Route::put('/ai-providers/{aiProvider}', [AiProviderController::class, 'update'])->name('ai-providers.update');
     Route::delete('/ai-providers/{aiProvider}', [AiProviderController::class, 'destroy'])->name('ai-providers.destroy');
     Route::post('/ai-providers/{aiProvider}/test', [AiProviderController::class, 'test'])->name('ai-providers.test');
+
+    // Reliability Dashboard
+    Route::get('/reliability', [ReliabilityController::class, 'index'])->name('reliability.index');
 
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');

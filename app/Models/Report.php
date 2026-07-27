@@ -28,6 +28,11 @@ class Report extends Model
         'funcloc_id',
         'asset_id',
         'report_type',
+        'jenis_pekerjaan',
+        'linked_finding_id',
+        'sesuai_rencana',
+        'tanggal_kejadian',
+        'equipment_tag',
         'ai_analyzed',
         'ai_confidence',
         'ai_suggestion_json',
@@ -50,6 +55,7 @@ class Report extends Model
             'ai_suggestion_json'      => 'array',
             'completed_at'            => 'datetime',
             'is_manually_edited'      => 'boolean',
+            'tanggal_kejadian'        => 'date:Y-m-d',
         ];
     }
 
@@ -121,6 +127,31 @@ class Report extends Model
     public function collaboratorReports(): HasMany
     {
         return $this->hasMany(Report::class, 'collaborator_of');
+    }
+
+    // =========================================================
+    // RELASI — CM / MAINTENANCE
+    // =========================================================
+
+    /**
+     * Finding CM yang menjadi asal-usul pekerjaan ini (jika ada).
+     *
+     * @return BelongsTo<CmFinding, Report>
+     */
+    public function linkedFinding(): BelongsTo
+    {
+        return $this->belongsTo(CmFinding::class, 'linked_finding_id');
+    }
+
+    /**
+     * Equipment CM yang terkait dengan laporan ini.
+     * Cocokkan berdasarkan equipment_tag.
+     *
+     * @return BelongsTo<CmEquipment, Report>
+     */
+    public function cmEquipment(): BelongsTo
+    {
+        return $this->belongsTo(CmEquipment::class, 'equipment_tag', 'equipment_tag');
     }
 
     // =========================================================
@@ -203,6 +234,30 @@ class Report extends Model
     public function scopeNeedsReview($query)
     {
         return $query->where('status', 'needs_review');
+    }
+
+    /**
+     * Scope: filter berdasarkan jenis pekerjaan.
+     */
+    public function scopeJenis($query, $jenis)
+    {
+        return $query->where('jenis_pekerjaan', $jenis);
+    }
+
+    /**
+     * Scope: filter berdasarkan rentang tanggal kejadian.
+     */
+    public function scopeTanggalKejadian($query, $dari, $sampai)
+    {
+        return $query->whereBetween('tanggal_kejadian', [$dari, $sampai]);
+    }
+
+    /**
+     * Scope: filter berdasarkan equipment_tag.
+     */
+    public function scopeEquipment($query, $tag)
+    {
+        return $query->where('equipment_tag', $tag);
     }
 
     /**
