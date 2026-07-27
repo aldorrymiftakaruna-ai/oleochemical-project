@@ -77,7 +77,6 @@ Route::middleware('admin')->group(function () {
         Route::get('/overview', [CmController::class, 'overview'])->name('overview');
         Route::get('/findings', [CmController::class, 'findings'])->name('findings');
         Route::get('/monitoring', [CmController::class, 'monitoring'])->name('monitoring');
-        Route::get('/equipment-detail/{id?}', [CmController::class, 'equipmentDetail'])->name('equipment-detail');
         Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
@@ -89,6 +88,7 @@ Route::middleware('admin')->group(function () {
         Route::get('/export/readings', [CmController::class, 'exportReadings'])->name('export-readings');
         Route::get('/export/findings', [CmController::class, 'exportFindings'])->name('export-findings');
         Route::get('/export/monitoring', [CmController::class, 'exportMonitoring'])->name('export-monitoring');
+        Route::get('/export/analysis', [CmController::class, 'exportAnalysis'])->name('export-analysis');
     });
 
     // AI Providers
@@ -110,6 +110,9 @@ Route::middleware('admin')->group(function () {
 
     // Reliability Dashboard
     Route::get('/reliability', [ReliabilityController::class, 'index'])->name('reliability.index');
+
+    // Work Orders
+    Route::resource('work-orders', WorkOrderController::class);
 
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');

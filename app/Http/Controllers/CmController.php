@@ -14,6 +14,7 @@ use App\Models\WorkOrder;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Rap2hpoutre\FastExcel\FastExcel;
 
 class CmController extends Controller
 {
@@ -27,12 +28,27 @@ class CmController extends Controller
         $filterBulan = $request->get('bulan', '');
         $filterStatus = $request->get('status', '');
 
+        // Query dasar dengan filter
+        $baseQuery = CmReading::query();
+        if ($filterPt) {
+            $baseQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
+        }
+        if ($filterTahun) {
+            $baseQuery->whereYear('tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $baseQuery->whereMonth('tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $baseQuery->where('kondisi', $filterStatus);
+        }
+
         // Data untuk summary cards
-        $totalRecords = CmReading::count();
-        $goodCount    = CmReading::where('kondisi', 'good')->count();
-        $alarmCount   = CmReading::where('kondisi', 'alarm')->count();
-        $dangerCount  = CmReading::where('kondisi', 'danger')->count();
-        $visualBadCount = CmReading::where('kondisi', 'visual_bad')->count();
+        $totalRecords  = (clone $baseQuery)->count();
+        $goodCount     = (clone $baseQuery)->where('kondisi', 'good')->count();
+        $alarmCount    = (clone $baseQuery)->where('kondisi', 'alarm')->count();
+        $dangerCount   = (clone $baseQuery)->where('kondisi', 'danger')->count();
+        $visualBadCount = (clone $baseQuery)->where('kondisi', 'visual_bad')->count();
 
         $goodPct = $totalRecords > 0 ? round(($goodCount / $totalRecords) * 100, 1) : 0;
         $alarmPct = $totalRecords > 0 ? round(($alarmCount / $totalRecords) * 100, 1) : 0;
@@ -40,29 +56,66 @@ class CmController extends Controller
         $visualBadPct = $totalRecords > 0 ? round(($visualBadCount / $totalRecords) * 100, 1) : 0;
 
         // Breakdown status per PT untuk donut chart
-        $statusPerPt = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+        $donutQuery = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
+
+        if ($filterPt) {
+            $donutQuery->where('cm_equipment.pt_location', $filterPt);
+        }
+        if ($filterTahun) {
+            $donutQuery->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $donutQuery->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $donutQuery->where('cm_readings.kondisi', $filterStatus);
+        }
+
+        $statusPerPt = $donutQuery
             ->groupBy('cm_equipment.pt_location', 'cm_readings.kondisi')
             ->orderBy('cm_equipment.pt_location')
             ->get()
             ->groupBy('pt_location');
 
         // Trend bulanan stacked
-        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
-            ->groupBy('tahun', 'bulan', 'kondisi')
-            ->orderBy('tahun')
-            ->orderBy('bulan');
+        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
 
         if ($filterPt) {
             $trendQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
+        if ($filterTahun) {
+            $trendQuery->whereYear('tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $trendQuery->whereMonth('tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $trendQuery->where('kondisi', $filterStatus);
+        }
 
-        $trendData = $trendQuery->get();
+        $trendData = $trendQuery
+            ->groupBy('tahun', 'bulan', 'kondisi')
+            ->orderBy('tahun')
+            ->orderBy('bulan')
+            ->get();
 
         // Top 10 vibrasi tertinggi
-        $topVibrasi = CmReading::selectRaw('cm_readings.*, cm_equipment.equipment_tag, cm_equipment.pt_location')
+        $topVibrasiQuery = CmReading::selectRaw('cm_readings.*, cm_equipment.equipment_tag, cm_equipment.pt_location')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
-            ->where('kondisi', 'danger')
+            ->where('kondisi', 'danger');
+
+        if ($filterPt) {
+            $topVibrasiQuery->where('cm_equipment.pt_location', $filterPt);
+        }
+        if ($filterTahun) {
+            $topVibrasiQuery->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $topVibrasiQuery->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+
+        $topVibrasi = $topVibrasiQuery
             ->orderByRaw('COALESCE(ndev_motor, 0) + COALESCE(ndev_pompa, 0) DESC')
             ->take(10)
             ->get();
@@ -109,7 +162,7 @@ class CmController extends Controller
             });
         }
 
-        $findings = $query->orderBy('tanggal_temuan', 'desc')->get();
+        $findings = $query->orderBy('tanggal_temuan', 'desc')->paginate(10)->withQueryString();
 
         // Jika request AJAX, return partial view
         if ($request->ajax() || $request->get('ajax')) {
@@ -182,24 +235,6 @@ class CmController extends Controller
             'filterTahun', 'hideDone', 'alertEquipments',
             'tahunIni', 'bulanIni'
         ));
-    }
-
-    /**
-     * Tampilkan halaman Equipment Detail.
-     */
-    public function equipmentDetail(Request $request, $id = null)
-    {
-        $equipment = null;
-        $readings  = collect();
-
-        if ($id) {
-            $equipment = CmEquipment::with(['readings' => fn($q) => $q->orderBy('tanggal')])->findOrFail($id);
-            $readings = $equipment->readings;
-        }
-
-        $equipments = CmEquipment::orderBy('equipment_tag')->get();
-
-        return view('cm.equipment-detail', compact('equipment', 'readings', 'equipments'));
     }
 
     /**
@@ -463,32 +498,292 @@ class CmController extends Controller
 
     /**
      * Tampilkan halaman Report & Analysis.
+     * 
+     * Menyediakan data untuk:
+     * 1. Section "Equipment Vibrasi Tinggi per PT" — breakdown 3 kolom per PT
+     * 2. Section "Ranking Analisa Bulanan" — tabel trend per kategori (semua PT)
+     * 3. Insight analisa otomatis rule-based
+     * 4. Export Analisa Vibrasi (Excel)
      */
     public function reportAnalysis(Request $request)
     {
         $filterTahun = $request->get('tahun', now()->format('Y'));
         $filterPt    = $request->get('pt', '');
+        $filterBulan = $request->get('bulan', '');
 
-        // Statistik umum untuk laporan
+        // Threshold dari config
+        $vibThreshold = config('cm.high_vibration.threshold', 4.5);
+        $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+
+        // ---------------------------------------------------------------
+        // SECTION 1: Equipment Vibrasi Tinggi per PT
+        // ---------------------------------------------------------------
+        // Ambil hanya equipment yang READING TERAKHIR-nya (max tanggal)
+        // memiliki kondisi ALARM/DANGER + max_vibration > threshold.
+        // Equipment yang sudah good di reading terakhir TIDAK ditampilkan.
+        $latestReadingSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as max_tanggal')
+            ->groupBy('cm_equipment_id');
+
+        $highVibEquipmentIds = CmReading::select('cm_readings.cm_equipment_id')
+            ->joinSub($latestReadingSub, 'latest', function ($join) {
+                $join->on('cm_readings.cm_equipment_id', '=', 'latest.cm_equipment_id')
+                     ->on('cm_readings.tanggal', '=', 'latest.max_tanggal');
+            })
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        // Filter tahun/bulan — terapkan pada reading terakhir
+        if ($filterTahun) {
+            $highVibEquipmentIds->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $highVibEquipmentIds->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+
+        $highVibEquipmentIds = $highVibEquipmentIds->distinct()->pluck('cm_equipment_id');
+
+        // Query detail untuk card per PT — dari equipment_ids yang sudah terfilter
+        $highVibDetail = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.cm_equipment_id', $highVibEquipmentIds)
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        // Filter tahun/bulan ulang (untuk join detail — aman karena sudah filter equipment_id)
+        if ($filterTahun) {
+            $highVibDetail->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $highVibDetail->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+
+        // Daftar PT — kalau filter PT spesifik, pakai 1 PT saja
+        $ptListForCards = [];
+        if ($filterPt) {
+            $ptListForCards = [$filterPt];
+        } else {
+            $ptListForCards = CmEquipment::select('pt_location')
+                ->distinct()
+                ->whereIn('id', $highVibEquipmentIds)
+                ->orderBy('pt_location')
+                ->pluck('pt_location')
+                ->toArray();
+        }
+
+        $ptBreakdown = [];
+
+        foreach ($ptListForCards as $pt) {
+            $queryPt = (clone $highVibDetail)->where('cm_equipment.pt_location', $pt);
+
+            // Total equipment ter-filter di PT ini
+            $totalPt = (clone $queryPt)->count();
+
+            if ($totalPt === 0) {
+                $ptBreakdown[$pt] = ['total' => 0, 'categories' => []];
+                continue;
+            }
+
+            // Group by analysis, urut dari jumlah terbanyak
+            $catRaw = (clone $queryPt)
+                ->selectRaw('cm_readings.analysis, COUNT(*) as total')
+                ->groupBy('cm_readings.analysis')
+                ->orderByDesc('total')
+                ->get();
+
+            $categories = [];
+            $rank = 1;
+            foreach ($catRaw as $cat) {
+                $pct = round(($cat->total / $totalPt) * 100, 1);
+
+                // Ambil sample equipment untuk badge di bawah kategori
+                $equipments = (clone $queryPt)
+                    ->where('cm_readings.analysis', $cat->analysis)
+                    ->select(
+                        'cm_equipment.equipment_tag',
+                        'cm_readings.kondisi',
+                        'cm_readings.tanggal'
+                    )
+                    ->orderBy('cm_equipment.equipment_tag')
+                    ->limit(10)
+                    ->get()
+                    ->map(function ($item) {
+                        // Format bulan dari tanggal
+                        $bulanLabel = $item->tanggal
+                            ? $this->bulanLabel((int) $item->tanggal->format('n')) . '-' . $item->tanggal->format('y')
+                            : '';
+                        return [
+                            'tag'     => $item->equipment_tag,
+                            'status'  => $item->kondisi,
+                            'bulan'   => $bulanLabel,
+                        ];
+                    });
+
+                $categories[] = [
+                    'rank'        => $rank++,
+                    'name'        => $cat->analysis,
+                    'count'       => (int) $cat->total,
+                    'percentage'  => $pct,
+                    'equipments'  => $equipments,
+                ];
+            }
+
+            $ptBreakdown[$pt] = [
+                'total'      => $totalPt,
+                'categories' => $categories,
+            ];
+        }
+
+        // ---------------------------------------------------------------
+        // SECTION 2: Ranking Analisa Bulanan (tabel trend per kategori)
+        // ---------------------------------------------------------------
+        // Agregat SEMUA PT — hanya equipment yang reading terakhirnya alarm/danger
+        $trendBase = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.cm_equipment_id', $highVibEquipmentIds)
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        if ($filterTahun) {
+            $trendBase->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $trendBase->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+
+        $trendRaw = (clone $trendBase)
+            ->selectRaw('cm_readings.analysis, MONTH(cm_readings.tanggal) as bulan, COUNT(*) as total')
+            ->groupBy('cm_readings.analysis', 'bulan')
+            ->orderBy('cm_readings.analysis')
+            ->orderBy('bulan')
+            ->get();
+
+        // Kumpulkan semua kategori dan bulan
+        $allCategories = $trendRaw->pluck('analysis')->unique()->values()->toArray();
+        $allMonths = range(1, 12);
+
+        // Bangun tabel ranking
+        $rankingTable = [];
+        $totalsPerBulan = array_fill_keys($allMonths, 0);
+        $grandTotalAll = 0;
+
+        foreach ($allCategories as $cat) {
+            $row = ['analysis' => $cat];
+            $rowTotal = 0;
+            foreach ($allMonths as $m) {
+                $val = $trendRaw->firstWhere(function ($item) use ($cat, $m) {
+                    return $item->analysis === $cat && (int) $item->bulan === $m;
+                });
+                $count = $val ? (int) $val->total : 0;
+                $row[$m] = $count;
+                $rowTotal += $count;
+                $totalsPerBulan[$m] += $count;
+            }
+            $row['total'] = $rowTotal;
+            $grandTotalAll += $rowTotal;
+            $rankingTable[] = $row;
+        }
+
+        // Urutkan berdasarkan total terbesar (ranking)
+        usort($rankingTable, fn($a, $b) => $b['total'] <=> $a['total']);
+
+        // Tambahkan rank (setelah sorting)
+        $rankedTable = [];
+        $rank = 1;
+        foreach ($rankingTable as &$row) {
+            $row['rank'] = $rank++;
+            $rankedTable[] = $row;
+        }
+
+        // ---------------------------------------------------------------
+        // SECTION 3: Insight Analisa Otomatis (Rule-Based)
+        // ---------------------------------------------------------------
+        $insight = null;
+
+        if (!empty($rankedTable) && $rankedTable[0]['total'] > 0) {
+            $topCategory = $rankedTable[0];
+
+            // Kategori dominan
+            $dominantCatName = $topCategory['analysis'];
+            $dominantTotal = $topCategory['total'];
+
+            // Cari PT dengan proporsi tertinggi untuk kategori dominan
+            $ptProporsi = [];
+            foreach ($ptBreakdown as $pt => $ptData) {
+                foreach ($ptData['categories'] as $cat) {
+                    if ($cat['name'] === $dominantCatName) {
+                        $ptProporsi[$pt] = [
+                            'count' => $cat['count'],
+                            'pct'   => $cat['percentage'],
+                            'total' => $ptData['total'],
+                        ];
+                        break;
+                    }
+                }
+            }
+
+            // PT dengan proporsi tertinggi
+            $topPt = null;
+            $topPtPct = 0;
+            foreach ($ptProporsi as $pt => $prop) {
+                if ($prop['pct'] > $topPtPct) {
+                    $topPt = $pt;
+                    $topPtPct = $prop['pct'];
+                }
+            }
+
+            // Trend naik/turun — bandingkan 2 bulan terakhir
+            $trendDirection = null;
+            $monthsWithData = array_filter($allMonths, fn($m) => $topCategory[$m] > 0);
+            $sortedMonths = array_values($monthsWithData);
+            if (count($sortedMonths) >= 2) {
+                $lastMonth = end($sortedMonths);
+                $prevMonth = prev($sortedMonths);
+                $lastVal = $topCategory[$lastMonth];
+                $prevVal = $topCategory[$prevMonth];
+
+                if ($lastVal > $prevVal) {
+                    $diff = $lastVal - $prevVal;
+                    $trendDirection = "naik {$diff} kasus dari bulan sebelumnya";
+                } elseif ($lastVal < $prevVal) {
+                    $diff = $prevVal - $lastVal;
+                    $trendDirection = "turun {$diff} kasus dari bulan sebelumnya";
+                } else {
+                    $trendDirection = "stabil (sama dengan bulan sebelumnya)";
+                }
+            } else {
+                $trendDirection = "data baru tersedia untuk 1 bulan";
+            }
+
+            $insight = [
+                'dominant_category' => $dominantCatName,
+                'dominant_total'    => $dominantTotal,
+                'top_pt'            => $topPt,
+                'top_pt_pct'        => $topPtPct,
+                'trend_direction'   => $trendDirection,
+            ];
+        }
+
+        // ---------------------------------------------------------------
+        // DATA UNTUK RINGKASAN UMUM (existing)
+        // ---------------------------------------------------------------
         $totalEquipment = CmEquipment::when($filterPt, fn($q) => $q->where('pt_location', $filterPt))->count();
 
-        $totalReadings = CmReading::when($filterPt, function ($q) use ($filterPt) {
-            $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt));
-        })->count();
+        $totalReadingsQuery = CmReading::when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
+        if ($filterTahun) { $totalReadingsQuery->whereYear('tanggal', $filterTahun); }
+        $totalReadings = $totalReadingsQuery->count();
 
-        $totalFindings = CmFinding::when($filterPt, function ($q) use ($filterPt) {
-            $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt));
-        })->count();
+        $totalFindings = CmFinding::when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)))->count();
 
         $openFindings = CmFinding::where('status', 'open')
-            ->when($filterPt, function ($q) use ($filterPt) {
-                $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt));
-            })->count();
+            ->when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)))
+            ->count();
 
         $monitoringProgress = CmMonthlyTracking::where('tahun', $filterTahun)
-            ->when($filterPt, function ($q) use ($filterPt) {
-                $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt));
-            })
+            ->when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)))
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->get()
@@ -498,13 +793,22 @@ class CmController extends Controller
         $monitoringTotal = $monitoringProgress->sum('total');
         $monitoringPct = $monitoringTotal > 0 ? round(($monitoringSudah / $monitoringTotal) * 100, 1) : 0;
 
+        // Daftar bulan untuk filter
+        $bulanList = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        ];
+
         $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
         $tahunList = range(now()->year - 2, now()->year);
 
         return view('cm.report-analysis', compact(
             'totalEquipment', 'totalReadings', 'totalFindings', 'openFindings',
             'monitoringSudah', 'monitoringTotal', 'monitoringPct',
-            'ptList', 'tahunList', 'filterTahun', 'filterPt'
+            'ptList', 'tahunList', 'filterTahun', 'filterPt', 'filterBulan',
+            'bulanList',
+            'ptBreakdown', 'rankedTable', 'allMonths', 'insight',
         ));
     }
 
@@ -513,18 +817,31 @@ class CmController extends Controller
      */
     public function trendChartData(Request $request)
     {
-        $filterPt = $request->get('pt', '');
+        $filterPt    = $request->get('pt', '');
+        $filterTahun = $request->get('tahun', '');
+        $filterBulan = $request->get('bulan', '');
+        $filterStatus = $request->get('status', '');
 
-        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
-            ->groupBy('tahun', 'bulan', 'kondisi')
-            ->orderBy('tahun')
-            ->orderBy('bulan');
+        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
 
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
+        if ($filterTahun) {
+            $query->whereYear('tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $query->whereMonth('tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $query->where('kondisi', $filterStatus);
+        }
 
-        $data = $query->get();
+        $data = $query
+            ->groupBy('tahun', 'bulan', 'kondisi')
+            ->orderBy('tahun')
+            ->orderBy('bulan')
+            ->get();
 
         // Format untuk chart
         $months = collect();
@@ -548,18 +865,32 @@ class CmController extends Controller
      */
     public function donutData(Request $request)
     {
-        $filterPt = $request->get('pt', '');
+        $filterPt    = $request->get('pt', '');
+        $filterTahun = $request->get('tahun', '');
+        $filterBulan = $request->get('bulan', '');
+        $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
-            ->groupBy('cm_equipment.pt_location', 'cm_readings.kondisi')
-            ->orderBy('cm_equipment.pt_location');
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
 
         if ($filterPt) {
             $query->where('cm_equipment.pt_location', $filterPt);
         }
+        if ($filterTahun) {
+            $query->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $query->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $query->where('cm_readings.kondisi', $filterStatus);
+        }
 
-        $data = $query->get()->groupBy('pt_location');
+        $data = $query
+            ->groupBy('cm_equipment.pt_location', 'cm_readings.kondisi')
+            ->orderBy('cm_equipment.pt_location')
+            ->get()
+            ->groupBy('pt_location');
 
         $result = [];
         foreach ($data as $pt => $items) {
@@ -577,11 +908,23 @@ class CmController extends Controller
      */
     public function overviewSummary(Request $request)
     {
-        $filterPt = $request->get('pt', '');
+        $filterPt    = $request->get('pt', '');
+        $filterTahun = $request->get('tahun', '');
+        $filterBulan = $request->get('bulan', '');
+        $filterStatus = $request->get('status', '');
 
         $query = CmReading::query();
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
+        }
+        if ($filterTahun) {
+            $query->whereYear('tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $query->whereMonth('tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $query->where('kondisi', $filterStatus);
         }
 
         $totalRecords  = (clone $query)->count();
@@ -792,12 +1135,14 @@ class CmController extends Controller
         $filterPt    = $request->get('pt', '');
         $filterTahun = $request->get('tahun', '');
         $filterBulan = $request->get('bulan', '');
+        $filterStatus = $request->get('status', '');
 
         $exporter = new CmReadingsExport();
         return $exporter->export(
             $filterPt ?: null,
             $filterTahun ?: null,
-            $filterBulan ?: null
+            $filterBulan ?: null,
+            $filterStatus ?: null
         );
     }
 
@@ -835,5 +1180,250 @@ class CmController extends Controller
             $filterTahun ?: null,
             $filterPt ?: null
         );
+    }
+
+    /**
+     * Export Analisa Vibrasi ke Excel.
+     *
+     * Data yang di-export mencakup:
+     * 1. Sheet "Per PT" — breakdown equipment vibrasi tinggi per kategori per PT
+     * 2. Sheet "Ranking Bulanan" — tabel ranking kategori per bulan (semua PT)
+     *
+     * Filter tahun, bulan, dan PT diterapkan sama seperti halaman Report & Analysis.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     */
+    public function exportAnalysis(Request $request)
+    {
+        $filterTahun = $request->get('tahun', now()->format('Y'));
+        $filterPt    = $request->get('pt', '');
+        $filterBulan = $request->get('bulan', '');
+
+        $vibThreshold = config('cm.high_vibration.threshold', 4.5);
+        $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+
+        // --- Sheet 1: Breakdown per PT ---
+        // Hanya equipment dengan reading terakhir alarm/danger
+        $latestReadingSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as max_tanggal')
+            ->groupBy('cm_equipment_id');
+
+        $vibEqIds = CmReading::select('cm_readings.cm_equipment_id')
+            ->joinSub($latestReadingSub, 'latest', function ($join) {
+                $join->on('cm_readings.cm_equipment_id', '=', 'latest.cm_equipment_id')
+                     ->on('cm_readings.tanggal', '=', 'latest.max_tanggal');
+            })
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        if ($filterTahun) { $vibEqIds->whereYear('cm_readings.tanggal', $filterTahun); }
+        if ($filterBulan) { $vibEqIds->whereMonth('cm_readings.tanggal', $filterBulan); }
+        if ($filterPt) {
+            $vibEqIds->whereIn('cm_readings.cm_equipment_id', function ($q) use ($filterPt) {
+                $q->select('id')->from('cm_equipment')->where('pt_location', $filterPt);
+            });
+        }
+
+        $vibEqIds = $vibEqIds->distinct()->pluck('cm_equipment_id');
+
+        $baseQuery = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.cm_equipment_id', $vibEqIds)
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        $sheet1Data = (clone $baseQuery)
+            ->select(
+                'cm_equipment.pt_location',
+                'cm_equipment.equipment_tag',
+                'cm_equipment.plant',
+                'cm_readings.analysis',
+                'cm_readings.kondisi',
+                'cm_readings.max_vibration',
+                'cm_readings.max_temp',
+                'cm_readings.tanggal'
+            )
+            ->orderBy('cm_equipment.pt_location')
+            ->orderBy('cm_readings.analysis')
+            ->orderBy('cm_equipment.equipment_tag')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'PT'             => $item->pt_location,
+                    'Plant'          => $item->plant,
+                    'Equipment Tag'  => $item->equipment_tag,
+                    'Analysis'       => $item->analysis,
+                    'Kondisi'        => $item->kondisi,
+                    'Max Vibration'  => $item->max_vibration,
+                    'Max Temp'       => $item->max_temp,
+                    'Tanggal'        => $item->tanggal ? $item->tanggal->format('Y-m-d') : '',
+                ];
+            });
+
+        // --- Sheet 2: Ranking Bulanan ---
+        $trendBase = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        if ($filterTahun) { $trendBase->whereYear('cm_readings.tanggal', $filterTahun); }
+        if ($filterBulan) { $trendBase->whereMonth('cm_readings.tanggal', $filterBulan); }
+
+        $trendRaw = (clone $trendBase)
+            ->selectRaw('cm_readings.analysis, MONTH(cm_readings.tanggal) as bulan, COUNT(*) as total')
+            ->groupBy('cm_readings.analysis', 'bulan')
+            ->orderBy('cm_readings.analysis')
+            ->orderBy('bulan')
+            ->get();
+
+        $allCategories = $trendRaw->pluck('analysis')->unique()->values()->toArray();
+        $allMonths = range(1, 12);
+
+        $rankingRows = [];
+        foreach ($allCategories as $cat) {
+            $row = ['Kategori' => $cat];
+            $rowTotal = 0;
+            foreach ($allMonths as $m) {
+                $val = $trendRaw->firstWhere(function ($item) use ($cat, $m) {
+                    return $item->analysis === $cat && (int) $item->bulan === $m;
+                });
+                $count = $val ? (int) $val->total : 0;
+                $label = $this->bulanLabel($m);
+                $row[$label] = $count;
+                $rowTotal += $count;
+            }
+            $row['Total'] = $rowTotal;
+            $rankingRows[] = $row;
+        }
+
+        usort($rankingRows, fn($a, $b) => $b['Total'] <=> $a['Total']);
+
+        $bulanLabels = array_map(fn($m) => $this->bulanLabel($m), $allMonths);
+
+        // Buat data flat untuk FastExcel (2 sheet via separate files approach — we'll combine inline)
+        // FastExcel hanya support single sheet, jadi kita gabung jadi 1 sheet dengan separator header
+        // Atau lebih baik: gunakan pendekatan file terpisah / manual spreadsheet
+        // Alternatif: gunakan Laravel Excel / PhpSpreadsheet langsung
+
+        // Karena FastExcel tidak mendukung multi-sheet dengan mudah,
+        // kita buat satu file dengan dua bagian yang dipisah baris kosong.
+        // Atau lebih praktis: buat 2 file terpisah dalam satu ZIP.
+        // Paling sederhana: export sebagai 1 sheet dengan kolom berbeda.
+
+        // Pendekatan: export 1 sheet detail + 1 sheet rekap dalam file berbeda? Tidak user-friendly.
+        // Lebih baik: gunakan PhpSpreadsheet langsung untuk multi-sheet.
+        // Tapi constraint: aplikasi pakai FastExcel. Alternatif: buat 2 sheet via PhpSpreadsheet.
+
+        // Gunakan PhpSpreadsheet langsung untuk multi-sheet
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+
+        // --- Sheet 1: Per PT ---
+        $sheet1 = $spreadsheet->getActiveSheet();
+        $sheet1->setTitle('Per PT');
+
+        // Header
+        $sheet1Headers = ['PT', 'Plant', 'Equipment Tag', 'Analysis', 'Kondisi', 'Max Vibration (mm/s)', 'Max Temp (C)', 'Tanggal'];
+        $col = 'A';
+        foreach ($sheet1Headers as $header) {
+            $sheet1->setCellValue($col . '1', $header);
+            $sheet1->getStyle($col . '1')->getFont()->setBold(true);
+            $col++;
+        }
+
+        // Data
+        $rowNum = 2;
+        foreach ($sheet1Data as $row) {
+            $sheet1->setCellValue('A' . $rowNum, $row['PT']);
+            $sheet1->setCellValue('B' . $rowNum, $row['Plant']);
+            $sheet1->setCellValue('C' . $rowNum, $row['Equipment Tag']);
+            $sheet1->setCellValue('D' . $rowNum, $row['Analysis']);
+            $sheet1->setCellValue('E' . $rowNum, $row['Kondisi']);
+            $sheet1->setCellValue('F' . $rowNum, $row['Max Vibration']);
+            $sheet1->setCellValue('G' . $rowNum, $row['Max Temp']);
+            $sheet1->setCellValue('H' . $rowNum, $row['Tanggal']);
+            $rowNum++;
+        }
+
+        // Auto-size columns
+        foreach (range('A', 'H') as $colLetter) {
+            $sheet1->getColumnDimension($colLetter)->setAutoSize(true);
+        }
+
+        // --- Sheet 2: Ranking Bulanan ---
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('Ranking Bulanan');
+
+        // Header
+        $sheet2Headers = ['Rank', 'Kategori'];
+        foreach ($bulanLabels as $label) {
+            $sheet2Headers[] = $label;
+        }
+        $sheet2Headers[] = 'Total';
+
+        $col = 'A';
+        foreach ($sheet2Headers as $header) {
+            $sheet2->setCellValue($col . '1', $header);
+            $sheet2->getStyle($col . '1')->getFont()->setBold(true);
+            $col++;
+        }
+
+        // Data
+        $rowNum = 2;
+        $rank = 1;
+        $totalsRow = array_fill(0, count($bulanLabels), 0);
+        $grandTotal = 0;
+
+        foreach ($rankingRows as $row) {
+            $sheet2->setCellValue('A' . $rowNum, $rank);
+            $sheet2->setCellValue('B' . $rowNum, $row['Kategori']);
+
+            $colIdx = 0;
+            foreach ($bulanLabels as $label) {
+                $val = $row[$label] ?? 0;
+                $sheet2->setCellValue(chr(67 + $colIdx) . $rowNum, $val);
+                $totalsRow[$colIdx] += $val;
+                $colIdx++;
+            }
+
+            $sheet2->setCellValue(chr(67 + count($bulanLabels)) . $rowNum, $row['Total']);
+            $grandTotal += $row['Total'];
+            $rank++;
+            $rowNum++;
+        }
+
+        // Baris Total
+        $sheet2->setCellValue('A' . $rowNum, '');
+        $sheet2->setCellValue('B' . $rowNum, 'Total');
+        $sheet2->getStyle('B' . $rowNum)->getFont()->setBold(true);
+        $colIdx = 0;
+        foreach ($bulanLabels as $label) {
+            $sheet2->setCellValue(chr(67 + $colIdx) . $rowNum, $totalsRow[$colIdx]);
+            $sheet2->getStyle(chr(67 + $colIdx) . $rowNum)->getFont()->setBold(true);
+            $colIdx++;
+        }
+        $sheet2->setCellValue(chr(67 + count($bulanLabels)) . $rowNum, $grandTotal);
+        $sheet2->getStyle(chr(67 + count($bulanLabels)) . $rowNum)->getFont()->setBold(true);
+
+        // Auto-size
+        $maxCol = chr(67 + count($bulanLabels));
+        foreach (range('A', $maxCol) as $colLetter) {
+            $sheet2->getColumnDimension($colLetter)->setAutoSize(true);
+        }
+
+        // Output
+        $filename = 'analisa-vibrasi-' . now()->format('Ymd-His') . '.xlsx';
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        // Stream download
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 }

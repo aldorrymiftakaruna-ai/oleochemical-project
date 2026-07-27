@@ -46,4 +46,22 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Analisis Vibrasi Tinggi — Threshold & Filter
+    |--------------------------------------------------------------------------
+    |
+    | Threshold untuk menentukan equipment dengan vibrasi tinggi, digunakan
+    | di halaman Report & Analysis untuk breakdown per PT dan ranking
+    | kategori bulanan. Nilai default 4.5 mm/s sesuai ISO 10816-3.
+    |
+    */
+    'high_vibration' => [
+        // Batas minimal max_vibration untuk dianggap "vibrasi tinggi" (mm/s)
+        'threshold' => 4.5,
+
+        // Status kondisi yang termasuk kategori alarm/danger
+        'status_filter' => ['alarm', 'danger'],
+    ],
+
 ];
