@@ -1,0 +1,112 @@
+[
+    {
+        "id": 1,
+        "migration": "0001_01_01_000000_create_users_table",
+        "batch": 1
+    },
+    {
+        "id": 2,
+        "migration": "0001_01_01_000001_create_cache_table",
+        "batch": 1
+    },
+    {
+        "id": 3,
+        "migration": "0001_01_01_000002_create_jobs_table",
+        "batch": 1
+    },
+    {
+        "id": 4,
+        "migration": "0001_01_01_000003_create_companies_table",
+        "batch": 1
+    },
+    {
+        "id": 5,
+        "migration": "0001_01_01_000004_create_departments_table",
+        "batch": 1
+    },
+    {
+        "id": 6,
+        "migration": "0001_01_01_000005_create_areas_table",
+        "batch": 1
+    },
+    {
+        "id": 7,
+        "migration": "0001_01_01_000006_create_sub_areas_table",
+        "batch": 1
+    },
+    {
+        "id": 8,
+        "migration": "0001_01_01_000007_create_assets_table",
+        "batch": 1
+    },
+    {
+        "id": 9,
+        "migration": "0001_01_01_000008_create_technicians_table",
+        "batch": 1
+    },
+    {
+        "id": 10,
+        "migration": "0001_01_01_000009_create_reports_table",
+        "batch": 1
+    },
+    {
+        "id": 11,
+        "migration": "0001_01_01_000010_create_ai_providers_table",
+        "batch": 1
+    },
+    {
+        "id": 12,
+        "migration": "0001_01_01_000010_create_functional_locations_table",
+        "batch": 1
+    },
+    {
+        "id": 13,
+        "migration": "0001_01_01_000011_add_funcloc_id_to_areas_table",
+        "batch": 1
+    },
+    {
+        "id": 14,
+        "migration": "0001_01_01_000011_create_bot_registrations_table",
+        "batch": 1
+    },
+    {
+        "id": 15,
+        "migration": "0001_01_01_000012_add_funcloc_id_to_sub_areas_table",
+        "batch": 1
+    },
+    {
+        "id": 16,
+        "migration": "0001_01_01_000013_add_funcloc_id_to_assets_table",
+        "batch": 1
+    },
+    {
+        "id": 17,
+        "migration": "0001_01_01_000014_add_funcloc_id_to_reports_table",
+        "batch": 1
+    },
+    {
+        "id": 18,
+        "migration": "2026_05_30_141439_create_asset_technician_table",
+        "batch": 1
+    },
+    {
+        "id": 19,
+        "migration": "2026_05_30_143043_add_group_and_section_to_technicians_table",
+        "batch": 1
+    },
+    {
+        "id": 20,
+        "migration": "2026_06_15_100000_add_wizard_fields_to_reports_table",
+        "batch": 1
+    },
+    {
+        "id": 21,
+        "migration": "2026_07_09_000001_add_collaboration_columns_to_reports_table",
+        "batch": 1
+    },
+    {
+        "id": 22,
+        "migration": "2026_07_14_000001_create_func_loc_sync_logs_table",
+        "batch": 1
+    }
+]

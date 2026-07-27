@@ -1,0 +1,42 @@
+[
+    {
+        "id": 1,
+        "company_id": 1,
+        "code": "PROD",
+        "name": "Production",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32"
+    },
+    {
+        "id": 2,
+        "company_id": 1,
+        "code": "LOGE",
+        "name": "Logistics",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32"
+    },
+    {
+        "id": 3,
+        "company_id": 1,
+        "code": "MTCE",
+        "name": "Maintenance",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32"
+    },
+    {
+        "id": 4,
+        "company_id": 1,
+        "code": "HRGA",
+        "name": "HR & General Affairs",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32"
+    },
+    {
+        "id": 5,
+        "company_id": 1,
+        "code": "QCRD",
+        "name": "Quality Control & R&D",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32"
+    }
+]

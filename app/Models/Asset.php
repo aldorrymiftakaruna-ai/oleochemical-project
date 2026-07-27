@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Asset extends Model
 {
@@ -70,6 +71,11 @@ class Asset extends Model
         return $this->belongsToMany(Technician::class, 'asset_technician')
             ->withPivot(['note', 'assigned_by', 'assigned_at'])
             ->withTimestamps();
+    }
+
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'asset_id');
     }
 
     public function scopeActive($query)

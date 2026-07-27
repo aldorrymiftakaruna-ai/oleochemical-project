@@ -3,6 +3,7 @@
 use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BotController;
+use App\Http\Controllers\CmController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
@@ -68,6 +69,25 @@ Route::middleware('admin')->group(function () {
     Route::resource('reports', ReportController::class);
     Route::post('/reports/{report}/update-status', [ReportController::class, 'updateStatus'])->name('reports.update-status');
     Route::post('/reports/{report}/photos', [ReportController::class, 'addPhoto'])->name('reports.add-photo');
+
+    // Condition Monitoring
+    Route::prefix('cm')->name('cm.')->group(function () {
+        Route::get('/overview', [CmController::class, 'overview'])->name('overview');
+        Route::get('/findings', [CmController::class, 'findings'])->name('findings');
+        Route::get('/monitoring', [CmController::class, 'monitoring'])->name('monitoring');
+        Route::get('/equipment-detail/{id?}', [CmController::class, 'equipmentDetail'])->name('equipment-detail');
+        Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
+        Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
+        Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
+        Route::get('/trend-chart-data', [CmController::class, 'trendChartData'])->name('trend-chart-data');
+        Route::get('/donut-data', [CmController::class, 'donutData'])->name('donut-data');
+        Route::get('/overview-summary', [CmController::class, 'overviewSummary'])->name('overview-summary');
+
+        // Export
+        Route::get('/export/readings', [CmController::class, 'exportReadings'])->name('export-readings');
+        Route::get('/export/findings', [CmController::class, 'exportFindings'])->name('export-findings');
+        Route::get('/export/monitoring', [CmController::class, 'exportMonitoring'])->name('export-monitoring');
+    });
 
     // AI Providers
     Route::get('/ai-providers', [AiProviderController::class, 'index'])->name('ai-providers.index');

@@ -1,0 +1,182 @@
+[
+    {
+        "id": 1,
+        "department_id": 1,
+        "code": "TF01",
+        "name": "Tank Farm Line 1",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 3
+    },
+    {
+        "id": 2,
+        "department_id": 1,
+        "code": "BD01",
+        "name": "Biodiesel Line 1",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 4
+    },
+    {
+        "id": 3,
+        "department_id": 1,
+        "code": "BD02",
+        "name": "Biodiesel Line 2",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 5
+    },
+    {
+        "id": 4,
+        "department_id": 1,
+        "code": "RG01",
+        "name": "Refinery & Glycerine Line 1",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 6
+    },
+    {
+        "id": 5,
+        "department_id": 1,
+        "code": "RG02",
+        "name": "Refinery & Glycerine Line 2",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 7
+    },
+    {
+        "id": 6,
+        "department_id": 1,
+        "code": "MD01",
+        "name": "Methylester Distillation",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 8
+    },
+    {
+        "id": 7,
+        "department_id": 1,
+        "code": "EN01",
+        "name": "Enzymatic Biodiesel",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 9
+    },
+    {
+        "id": 8,
+        "department_id": 1,
+        "code": "UT01",
+        "name": "Utility",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 10
+    },
+    {
+        "id": 9,
+        "department_id": 2,
+        "code": "ST01",
+        "name": "Storage",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 12
+    },
+    {
+        "id": 10,
+        "department_id": 2,
+        "code": "UL01",
+        "name": "Unloading",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 13
+    },
+    {
+        "id": 11,
+        "department_id": 2,
+        "code": "UL02",
+        "name": "Loading Bay",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 14
+    },
+    {
+        "id": 12,
+        "department_id": 2,
+        "code": "WB01",
+        "name": "Weighbridge",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 15
+    },
+    {
+        "id": 13,
+        "department_id": 2,
+        "code": "WH02",
+        "name": "Warehouse",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 16
+    },
+    {
+        "id": 14,
+        "department_id": 3,
+        "code": "MT01",
+        "name": "Workshop",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 18
+    },
+    {
+        "id": 15,
+        "department_id": 3,
+        "code": "MT02",
+        "name": "M&E Office",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 19
+    },
+    {
+        "id": 16,
+        "department_id": 3,
+        "code": "MT03",
+        "name": "Utility Maintenance",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 20
+    },
+    {
+        "id": 17,
+        "department_id": 4,
+        "code": "GA01",
+        "name": "Office",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 22
+    },
+    {
+        "id": 18,
+        "department_id": 4,
+        "code": "GA02",
+        "name": "Canteen & Mosque",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 23
+    },
+    {
+        "id": 19,
+        "department_id": 4,
+        "code": "GA03",
+        "name": "Security Post",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 24
+    },
+    {
+        "id": 20,
+        "department_id": 5,
+        "code": "QC01",
+        "name": "Lab",
+        "created_at": "2026-07-23 07:15:32",
+        "updated_at": "2026-07-23 07:15:32",
+        "funcloc_id": 26
+    }
+]

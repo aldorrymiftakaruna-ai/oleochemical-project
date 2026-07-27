@@ -1,0 +1,22 @@
+[
+    {
+        "id": 1,
+        "name": "Admin Utama",
+        "email": "admin@oleochemical.pro",
+        "password": "$2y$12$qwZ8Wx\/ZnNNm2566i4z\/seO7Uc.jKvMBLwacqOhM5rtv28O0o3B7q",
+        "role": "admin",
+        "remember_token": null,
+        "created_at": "2026-07-23 07:15:31",
+        "updated_at": "2026-07-23 07:15:31"
+    },
+    {
+        "id": 2,
+        "name": "Supervisor",
+        "email": "supervisor@oleochemical.pro",
+        "password": "$2y$12$0WWuakSbEX5zt\/kvHbby9.fRms\/idTWTsU0za\/SkWp2QYST0FHc8u",
+        "role": "supervisor",
+        "remember_token": null,
+        "created_at": "2026-07-23 07:15:31",
+        "updated_at": "2026-07-23 07:15:31"
+    }
+]

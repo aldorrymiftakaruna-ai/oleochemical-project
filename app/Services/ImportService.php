@@ -147,31 +147,31 @@ class ImportService
             // Process clean rows
             foreach ($analysis['clean'] as $row) {
                 $location = $this->findOrCreateLocation($row['location']);
-                $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+                $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc'] ?? null);
 
-                Asset::create(array_merge(
-                    $this->mapToAsset($row),
-                    $location,
-                    [
-                        'funcloc_id' => $funcLocNode?->id,
-                        'status' => 'active',
-                        'has_equipment_no' => true,
-                        'data_source' => 'import_excel',
-                        'imported_at' => now(),
-                    ]
-                ));
-                $successCount++;
-            }
+                                Asset::create(array_merge(
+                                    $this->mapToAsset($row),
+                                    $location,
+                                    [
+                                        'funcloc_id' => $funcLocNode?->id,
+                                        'status' => 'active',
+                                        'has_equipment_no' => true,
+                                        'data_source' => 'import_excel',
+                                        'imported_at' => now(),
+                                    ]
+                                ));
+                                $successCount++;
+                            }
 
-            // Process duplicates
-            if ($duplicateAction !== 'skip') {
-                foreach ($analysis['duplicate'] as $row) {
-                    $existing = Asset::where('equipment_no', $row['equipment_no'])->first();
-                    if (!$existing) continue;
+                            // Process duplicates
+                            if ($duplicateAction !== 'skip') {
+                                foreach ($analysis['duplicate'] as $row) {
+                                    $existing = Asset::where('equipment_no', $row['equipment_no'])->first();
+                                    if (!$existing) continue;
 
-                    if ($duplicateAction === 'replace') {
-                        $location = $this->findOrCreateLocation($row['location']);
-                        $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+                                    if ($duplicateAction === 'replace') {
+                                        $location = $this->findOrCreateLocation($row['location']);
+                                        $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc'] ?? null);
 
                         $existing->update(array_merge(
                             $this->mapToAsset($row),
@@ -187,11 +187,11 @@ class ImportService
             }
 
             // Process no equipment rows
-            if ($noEquipAction === 'flag') {
+                        if ($noEquipAction === 'flag') {
                 foreach ($analysis['no_equip'] as $row) {
                     $funcLocString = $row['functional_loc'] ?? '';
                     $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
-                    $funcLocNode = $funcLocString !== '' ? $this->syncFuncLocFromRow($funcLocString) : null;
+                    $funcLocNode = $this->syncFuncLocFromRow($funcLocString);
 
                     Asset::create(array_merge(
                         [
@@ -360,10 +360,14 @@ class ImportService
      * @param  string  $funcLoc
      * @return FunctionalLocation|null
      */
-    public function syncFuncLocFromRow(string $funcLoc): ?FunctionalLocation
+        public function syncFuncLocFromRow(?string $funcLoc): ?FunctionalLocation
     {
-        $segments = $this->splitFuncLocSegments($funcLoc);
+        $funcLoc = trim($funcLoc ?? '');
+        if ($funcLoc === '') {
+            return null;
+        }
 
+        $segments = $this->splitFuncLocSegments($funcLoc);
         if (empty($segments)) {
             return null;
         }
