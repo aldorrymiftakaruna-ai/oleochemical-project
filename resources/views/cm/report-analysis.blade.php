@@ -1,6 +1,6 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 
-@section('title', 'Report & Analysis — Condition Monitoring')
+@section('title', 'Report & Analysis - Condition Monitoring')
 @section('breadcrumb')
     <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
     <span class="text-slate-300">/</span>
@@ -84,7 +84,7 @@
                 </svg>
             </div>
             <div class="flex-1 min-w-0">
-                <h4 class="text-sm font-semibold text-teal-900">Insight Analisa Vibrasi — {{ $filterTahun }}</h4>
+                <h4 class="text-sm font-semibold text-teal-900">Insight Analisa Vibrasi - {{ $filterTahun }}</h4>
                 <p class="text-sm text-teal-800 mt-1">
                     <strong>{{ $insight['dominant_category'] }}</strong> adalah kategori masalah paling dominan tahun ini
                     (Total: {{ $insight['dominant_total'] }} kasus, {{ $insight['trend_direction'] }}).
@@ -101,7 +101,7 @@
     <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <h3 class="font-semibold text-slate-900 mb-1">Equipment Vibrasi Tinggi per PT</h3>
         <p class="text-xs text-slate-400 mb-5">
-            Status ALARM/DANGER dengan vibrasi &gt; 4.5 mm/s — dikelompokkan berdasarkan kategori analisa
+            Status ALARM/DANGER dengan vibrasi &gt; 4.5 mm/s - dikelompokkan berdasarkan kategori analisa
         </p>
 
         <div class="grid grid-cols-1 {{ $filterPt ? '' : 'lg:grid-cols-3' }} gap-6">
@@ -143,17 +143,18 @@
                                 {{-- Badge equipment --}}
                                 <div class="flex flex-wrap gap-1.5">
                                     @foreach($cat['equipments'] as $eq)
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium
+                                        <a href="{{ route('cm.equipment-show', $eq['tag']) }}"
+                                           class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium hover:opacity-80 transition-opacity
                                             {{ $eq['status'] === 'danger' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-amber-50 text-amber-700 border border-amber-200' }}">
                                             <span class="font-mono">{{ $eq['tag'] }}</span>
                                             <span class="w-1.5 h-1.5 rounded-full inline-block
                                                 {{ $eq['status'] === 'danger' ? 'bg-red-500' : 'bg-amber-500' }}"></span>
                                             <span class="uppercase text-[10px]">{{ $eq['status'] === 'danger' ? 'DGR' : 'ALR' }}</span>
                                             @if($eq['bulan'])
-                                                <span class="text-slate-400">·</span>
+                                                <span class="text-slate-400">-</span>
                                                 <span class="text-slate-400">{{ $eq['bulan'] }}</span>
                                             @endif
-                                        </span>
+                                        </a>
                                     @endforeach
                                 </div>
                             </div>
@@ -175,7 +176,7 @@
     <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <h3 class="font-semibold text-slate-900 mb-1">Ranking Analisa Bulanan</h3>
         <p class="text-xs text-slate-400 mb-5">
-            Trend jumlah equipment vibrasi tinggi per kategori analisa — semua PT (filter: Alarm/Danger, vibrasi &gt; 4.5 mm/s)
+            Trend jumlah equipment vibrasi tinggi per kategori analisa - semua PT (filter: Alarm/Danger, vibrasi &gt; 4.5 mm/s)
         </p>
 
         <div class="overflow-x-auto">

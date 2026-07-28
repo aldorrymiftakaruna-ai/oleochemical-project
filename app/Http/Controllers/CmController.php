@@ -516,86 +516,112 @@ class CmController extends Controller
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
 
         // ---------------------------------------------------------------
-        // SECTION 1: Equipment Vibrasi Tinggi per PT
+        // SECTION 1: Equipment Vibrasi Tinggi per PT (LATEST PER EQUIPMENT)
         // ---------------------------------------------------------------
-        // Ambil hanya equipment yang READING TERAKHIR-nya (max tanggal)
-        // memiliki kondisi ALARM/DANGER + max_vibration > threshold.
-        // Equipment yang sudah good di reading terakhir TIDAK ditampilkan.
-        // BUKAN latest reading — ambil SEMUA kejadian, karena terbukti
-        // joinSub untuk latest reading menggugurkan data yang analysis-nya
-        // tidak ada di reading terakhir (44 record kosong).
-        $baseQuery = CmReading::query()
+        // STEP 1: Cari reading TERBARU per equipment (self-join by MAX tanggal).
+        // PENTING: pakai MAX(tanggal) karena id TIDAK mencerminkan urutan
+        // tanggal (ada anomali — id lebih besar tapi tanggal lebih kecil).
+        $latestReadingIds = DB::table('cm_readings as r1')
+            ->select('r1.id')
+            ->whereRaw('r1.tanggal = (
+                select MAX(r2.tanggal) from cm_readings r2
+                where r2.cm_equipment_id = r1.cm_equipment_id
+            )')
+            ->pluck('r1.id');
+
+        // STEP 2: Dari reading TERBARU itu saja, filter status ALARM/DANGER.
+        // TIDAK filter analysis dulu — banyak latest reading yang analysis-nya
+        // kosong, tapi analysis-nya ADA di reading sebelumnya. Kami ambil
+        // analysis dari reading terakhir yang PUNYA analysis sebagai fallback.
+        // STEP 2a: Cari ID reading terakhir yang PUNYA analysis per equipment
+        // (untuk fallback analysis jika latest reading analysis-nya kosong)
+        $latestAnalysisIds = DB::table('cm_readings as r1')
+            ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereNotNull('r1.analysis')
+            ->where('r1.analysis', '!=', '')
+            ->groupBy('r1.cm_equipment_id')
+            ->pluck('id');
+
+        // STEP 2b: Ambil semua latest reading alarm/danger (tanpa filter analysis)
+        $baseLatestRaw = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.id', $latestReadingIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
-            ->where('cm_readings.max_vibration', '>', $vibThreshold)
-            ->whereNotNull('cm_readings.analysis')
-            ->where('cm_readings.analysis', '!=', '');
+            ->where('cm_readings.max_vibration', '>', $vibThreshold);
 
-        if ($filterTahun) { $baseQuery->whereYear('cm_readings.tanggal', $filterTahun); }
-        if ($filterBulan) { $baseQuery->whereMonth('cm_readings.tanggal', $filterBulan); }
-        if ($filterPt) { $baseQuery->where('cm_equipment.pt_location', $filterPt); }
+        if ($filterTahun) { $baseLatestRaw->whereYear('cm_readings.tanggal', $filterTahun); }
+        if ($filterBulan) { $baseLatestRaw->whereMonth('cm_readings.tanggal', $filterBulan); }
+        if ($filterPt) { $baseLatestRaw->where('cm_equipment.pt_location', $filterPt); }
 
+        // LEFT JOIN ke analysis fallback
+        $latestRows = (clone $baseLatestRaw)
+            ->leftJoinSub(
+                DB::table('cm_readings')
+                    ->select('cm_equipment_id', 'analysis as fallback_analysis')
+                    ->whereIn('id', $latestAnalysisIds),
+                'fallback',
+                'fallback.cm_equipment_id', '=', 'cm_readings.cm_equipment_id'
+            )
+            ->select(
+                'cm_equipment.pt_location',
+                DB::raw("COALESCE(NULLIF(cm_readings.analysis, ''), fallback.fallback_analysis) as analysis"),
+                'cm_readings.cm_equipment_id',
+                'cm_equipment.equipment_tag',
+                'cm_readings.kondisi',
+                'cm_readings.tanggal'
+            )
+            ->get()
+            ->filter(function ($row) {
+                // Hanya equipment yang analysis-nya terisi (dari latest atau fallback)
+                return !empty($row->analysis);
+            })
+            ->values();
 
-
-        // Daftar PT — kalau filter PT spesifik, pakai 1 PT saja
+        // Daftar PT
         $ptListForCards = $filterPt
             ? [$filterPt]
-            : (clone $baseQuery)->distinct()->pluck('cm_equipment.pt_location')->sort()->values()->toArray();
+            : $latestRows->pluck('pt_location')->unique()->sort()->values()->toArray();
 
         $ptBreakdown = [];
 
         foreach ($ptListForCards as $pt) {
-            $queryPt = (clone $baseQuery)->where('cm_equipment.pt_location', $pt);
-
-            // Total DISTINCT equipment di PT ini (bukan total reading)
-            $totalPt = (clone $queryPt)
-                ->distinct('cm_readings.cm_equipment_id')
-                ->count('cm_readings.cm_equipment_id');
+            $ptRows = $latestRows->where('pt_location', $pt);
+            $totalPt = $ptRows->count();
 
             if ($totalPt === 0) {
                 $ptBreakdown[$pt] = ['total' => 0, 'categories' => []];
                 continue;
             }
 
-            // Group by analysis — DISTINCT equipment, bukan total reading
-            $catRaw = (clone $queryPt)
-                ->selectRaw('cm_readings.analysis, COUNT(DISTINCT cm_readings.cm_equipment_id) as total')
-                ->groupBy('cm_readings.analysis')
-                ->orderByDesc('total')
-                ->get();
+            // Group by analysis — sudah 1 per equipment (pakai Collection)
+            $catGroups = $ptRows->groupBy('analysis')->sortByDesc(function ($group) {
+                return $group->count();
+            });
 
             $categories = [];
             $rank = 1;
-            foreach ($catRaw as $cat) {
-                $pct = round(($cat->total / $totalPt) * 100, 1);
+            foreach ($catGroups as $analysisName => $group) {
+                $count = $group->count();
+                $pct = $totalPt > 0 ? round(($count / $totalPt) * 100, 1) : 0;
 
-                // Ambil sample equipment untuk badge di bawah kategori
-                $equipments = (clone $queryPt)
-                    ->where('cm_readings.analysis', $cat->analysis)
-                    ->select(
-                        'cm_equipment.equipment_tag',
-                        'cm_readings.kondisi',
-                        'cm_readings.tanggal'
-                    )
-                    ->orderBy('cm_equipment.equipment_tag')
-                    ->limit(10)
-                    ->get()
-                    ->map(function ($item) {
-                        // Format bulan dari tanggal
-                        $bulanLabel = $item->tanggal
-                            ? $this->bulanLabel((int) $item->tanggal->format('n')) . '-' . $item->tanggal->format('y')
-                            : '';
-                        return [
-                            'tag'     => $item->equipment_tag,
-                            'status'  => $item->kondisi,
-                            'bulan'   => $bulanLabel,
-                        ];
+                // Sample equipment (max 10, unik per tag)
+                $sampleTags = $group->pluck('equipment_tag')->unique()->take(10);
+                $equipments = $sampleTags->map(function ($tag) use ($group) {
+                    $row = $group->firstWhere('equipment_tag', $tag);
+                    $bulanLabel = $row->tanggal
+                        ? $this->bulanLabel((int) \Carbon\Carbon::parse($row->tanggal)->format('n')) . '-' . \Carbon\Carbon::parse($row->tanggal)->format('y')
+                        : '';
+                    return [
+                        'tag'    => $tag,
+                        'status' => $row->kondisi,
+                        'bulan'  => $bulanLabel,
+                    ];
                     });
 
                 $categories[] = [
                     'rank'        => $rank++,
-                    'name'        => $cat->analysis,
-                    'count'       => (int) $cat->total,
+                    'name'        => $analysisName,
+                    'count'       => $count,
                     'percentage'  => $pct,
                     'equipments'  => $equipments,
                 ];
@@ -610,9 +636,22 @@ class CmController extends Controller
         // ---------------------------------------------------------------
         // SECTION 2: Ranking Analisa Bulanan (tabel trend per kategori)
         // ---------------------------------------------------------------
-        // Agregat SEMUA PT — hanya equipment yang reading terakhirnya alarm/danger
-        $trendRaw = (clone $baseQuery)
-            ->selectRaw('cm_readings.analysis, MONTH(cm_readings.tanggal) as bulan, COUNT(*) as total')
+        // SEMUA histori kejadian (bukan latest-only) — supaya trend bulanan
+        // tetap valid untuk melihat pola historis, meskipun equipment sudah
+        // membaik di bulan berikutnya.
+        $trendAllQuery = CmReading::query()
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.kondisi', $statusFilter)
+            ->where('cm_readings.max_vibration', '>', $vibThreshold)
+            ->whereNotNull('cm_readings.analysis')
+            ->where('cm_readings.analysis', '!=', '');
+
+        if ($filterTahun) { $trendAllQuery->whereYear('cm_readings.tanggal', $filterTahun); }
+        if ($filterBulan) { $trendAllQuery->whereMonth('cm_readings.tanggal', $filterBulan); }
+        if ($filterPt) { $trendAllQuery->where('cm_equipment.pt_location', $filterPt); }
+
+        $trendRaw = (clone $trendAllQuery)
+            ->selectRaw('cm_readings.analysis, MONTH(cm_readings.tanggal) as bulan, COUNT(DISTINCT cm_readings.cm_equipment_id) as total')
             ->groupBy('cm_readings.analysis', 'bulan')
             ->orderBy('cm_readings.analysis')
             ->orderBy('bulan')
