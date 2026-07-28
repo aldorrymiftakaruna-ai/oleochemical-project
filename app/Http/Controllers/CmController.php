@@ -23,9 +23,9 @@ class CmController extends Controller
      */
     public function overview(Request $request)
     {
-        $filterPt    = $request->get('pt', '');
-        $filterTahun = $request->get('tahun', now()->format('Y'));
-        $filterBulan = $request->get('bulan', '');
+        $filterPt    = $request->input('pt');
+        $filterTahun = $request->input('tahun', now()->year);
+        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
         // Query dasar dengan filter
@@ -143,7 +143,7 @@ class CmController extends Controller
      */
     public function findings(Request $request)
     {
-        $filterPt     = $request->get('pt', '');
+        $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
         $search       = $request->get('search', '');
 
@@ -189,7 +189,7 @@ class CmController extends Controller
      */
     public function monitoring(Request $request)
     {
-        $filterTahun = $request->get('tahun', now()->format('Y'));
+        $filterTahun = $request->input('tahun', now()->year);
         $hideDone    = $request->boolean('hide_done', false);
 
         $tahunIni = (int) $filterTahun;
@@ -417,7 +417,7 @@ class CmController extends Controller
      */
     public function equipmentStatus(Request $request)
     {
-        $filterPt     = $request->get('pt', '');
+        $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
         $search       = $request->get('search', '');
 
@@ -507,9 +507,9 @@ class CmController extends Controller
      */
     public function reportAnalysis(Request $request)
     {
-        $filterTahun = $request->get('tahun', now()->format('Y'));
-        $filterPt    = $request->get('pt', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterTahun = $request->input('tahun', now()->year);
+        $filterPt    = $request->input('pt');
+        $filterBulan = $request->input('bulan');
 
         // Threshold dari config
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
@@ -521,74 +521,45 @@ class CmController extends Controller
         // Ambil hanya equipment yang READING TERAKHIR-nya (max tanggal)
         // memiliki kondisi ALARM/DANGER + max_vibration > threshold.
         // Equipment yang sudah good di reading terakhir TIDAK ditampilkan.
-        $latestReadingSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as max_tanggal')
-            ->groupBy('cm_equipment_id');
-
-        $highVibEquipmentIds = CmReading::select('cm_readings.cm_equipment_id')
-            ->joinSub($latestReadingSub, 'latest', function ($join) {
-                $join->on('cm_readings.cm_equipment_id', '=', 'latest.cm_equipment_id')
-                     ->on('cm_readings.tanggal', '=', 'latest.max_tanggal');
-            })
+        // BUKAN latest reading — ambil SEMUA kejadian, karena terbukti
+        // joinSub untuk latest reading menggugurkan data yang analysis-nya
+        // tidak ada di reading terakhir (44 record kosong).
+        $baseQuery = CmReading::query()
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')
             ->where('cm_readings.analysis', '!=', '');
 
-        // Filter tahun/bulan — terapkan pada reading terakhir
-        if ($filterTahun) {
-            $highVibEquipmentIds->whereYear('cm_readings.tanggal', $filterTahun);
-        }
-        if ($filterBulan) {
-            $highVibEquipmentIds->whereMonth('cm_readings.tanggal', $filterBulan);
-        }
+        if ($filterTahun) { $baseQuery->whereYear('cm_readings.tanggal', $filterTahun); }
+        if ($filterBulan) { $baseQuery->whereMonth('cm_readings.tanggal', $filterBulan); }
+        if ($filterPt) { $baseQuery->where('cm_equipment.pt_location', $filterPt); }
 
-        $highVibEquipmentIds = $highVibEquipmentIds->distinct()->pluck('cm_equipment_id');
 
-        // Query detail untuk card per PT — dari equipment_ids yang sudah terfilter
-        $highVibDetail = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
-            ->whereIn('cm_readings.cm_equipment_id', $highVibEquipmentIds)
-            ->whereIn('cm_readings.kondisi', $statusFilter)
-            ->where('cm_readings.max_vibration', '>', $vibThreshold)
-            ->whereNotNull('cm_readings.analysis')
-            ->where('cm_readings.analysis', '!=', '');
-
-        // Filter tahun/bulan ulang (untuk join detail — aman karena sudah filter equipment_id)
-        if ($filterTahun) {
-            $highVibDetail->whereYear('cm_readings.tanggal', $filterTahun);
-        }
-        if ($filterBulan) {
-            $highVibDetail->whereMonth('cm_readings.tanggal', $filterBulan);
-        }
 
         // Daftar PT — kalau filter PT spesifik, pakai 1 PT saja
-        $ptListForCards = [];
-        if ($filterPt) {
-            $ptListForCards = [$filterPt];
-        } else {
-            $ptListForCards = CmEquipment::select('pt_location')
-                ->distinct()
-                ->whereIn('id', $highVibEquipmentIds)
-                ->orderBy('pt_location')
-                ->pluck('pt_location')
-                ->toArray();
-        }
+        $ptListForCards = $filterPt
+            ? [$filterPt]
+            : (clone $baseQuery)->distinct()->pluck('cm_equipment.pt_location')->sort()->values()->toArray();
 
         $ptBreakdown = [];
 
         foreach ($ptListForCards as $pt) {
-            $queryPt = (clone $highVibDetail)->where('cm_equipment.pt_location', $pt);
+            $queryPt = (clone $baseQuery)->where('cm_equipment.pt_location', $pt);
 
-            // Total equipment ter-filter di PT ini
-            $totalPt = (clone $queryPt)->count();
+            // Total DISTINCT equipment di PT ini (bukan total reading)
+            $totalPt = (clone $queryPt)
+                ->distinct('cm_readings.cm_equipment_id')
+                ->count('cm_readings.cm_equipment_id');
 
             if ($totalPt === 0) {
                 $ptBreakdown[$pt] = ['total' => 0, 'categories' => []];
                 continue;
             }
 
-            // Group by analysis, urut dari jumlah terbanyak
+            // Group by analysis — DISTINCT equipment, bukan total reading
             $catRaw = (clone $queryPt)
-                ->selectRaw('cm_readings.analysis, COUNT(*) as total')
+                ->selectRaw('cm_readings.analysis, COUNT(DISTINCT cm_readings.cm_equipment_id) as total')
                 ->groupBy('cm_readings.analysis')
                 ->orderByDesc('total')
                 ->get();
@@ -640,21 +611,7 @@ class CmController extends Controller
         // SECTION 2: Ranking Analisa Bulanan (tabel trend per kategori)
         // ---------------------------------------------------------------
         // Agregat SEMUA PT — hanya equipment yang reading terakhirnya alarm/danger
-        $trendBase = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
-            ->whereIn('cm_readings.cm_equipment_id', $highVibEquipmentIds)
-            ->whereIn('cm_readings.kondisi', $statusFilter)
-            ->where('cm_readings.max_vibration', '>', $vibThreshold)
-            ->whereNotNull('cm_readings.analysis')
-            ->where('cm_readings.analysis', '!=', '');
-
-        if ($filterTahun) {
-            $trendBase->whereYear('cm_readings.tanggal', $filterTahun);
-        }
-        if ($filterBulan) {
-            $trendBase->whereMonth('cm_readings.tanggal', $filterBulan);
-        }
-
-        $trendRaw = (clone $trendBase)
+        $trendRaw = (clone $baseQuery)
             ->selectRaw('cm_readings.analysis, MONTH(cm_readings.tanggal) as bulan, COUNT(*) as total')
             ->groupBy('cm_readings.analysis', 'bulan')
             ->orderBy('cm_readings.analysis')
@@ -817,9 +774,9 @@ class CmController extends Controller
      */
     public function trendChartData(Request $request)
     {
-        $filterPt    = $request->get('pt', '');
+        $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
@@ -865,9 +822,9 @@ class CmController extends Controller
      */
     public function donutData(Request $request)
     {
-        $filterPt    = $request->get('pt', '');
+        $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
@@ -908,9 +865,9 @@ class CmController extends Controller
      */
     public function overviewSummary(Request $request)
     {
-        $filterPt    = $request->get('pt', '');
+        $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::query();
@@ -1132,9 +1089,9 @@ class CmController extends Controller
      */
     public function exportReadings(Request $request)
     {
-        $filterPt    = $request->get('pt', '');
+        $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
         $exporter = new CmReadingsExport();
@@ -1154,7 +1111,7 @@ class CmController extends Controller
      */
     public function exportFindings(Request $request)
     {
-        $filterPt     = $request->get('pt', '');
+        $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
 
         $exporter = new CmFindingsExport();
@@ -1173,7 +1130,7 @@ class CmController extends Controller
     public function exportMonitoring(Request $request)
     {
         $filterTahun = $request->get('tahun', '');
-        $filterPt    = $request->get('pt', '');
+        $filterPt    = $request->input('pt');
 
         $exporter = new CmMonitoringExport();
         return $exporter->export(
@@ -1196,9 +1153,9 @@ class CmController extends Controller
      */
     public function exportAnalysis(Request $request)
     {
-        $filterTahun = $request->get('tahun', now()->format('Y'));
-        $filterPt    = $request->get('pt', '');
-        $filterBulan = $request->get('bulan', '');
+        $filterTahun = $request->input('tahun', now()->year);
+        $filterPt    = $request->input('pt');
+        $filterBulan = $request->input('bulan');
 
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
