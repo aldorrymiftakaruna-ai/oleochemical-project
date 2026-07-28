@@ -518,6 +518,11 @@ class CmController extends Controller
         // ---------------------------------------------------------------
         // SECTION 1: Equipment Vibrasi Tinggi per PT (LATEST PER EQUIPMENT)
         // ---------------------------------------------------------------
+        // Pendekatan Opsi A:
+        // 1. Latest reading = ALARM/DANGER + vib > threshold → tampilkan
+        // 2. Latest reading = GOOD/VISUAL_BAD vib ≤ 0.5, tapi PERNAH
+        //    alarm/danger di 3 bulan sebelumnya → fallback ke reading
+        //    alarm/danger TERAKHIR (trouble belum selesai, cuma blm terdata)
         // STEP 1: Cari reading TERBARU per equipment (self-join by MAX tanggal).
         // PENTING: pakai MAX(tanggal) karena id TIDAK mencerminkan urutan
         // tanggal (ada anomali — id lebih besar tapi tanggal lebih kecil).
@@ -529,12 +534,17 @@ class CmController extends Controller
             )')
             ->pluck('r1.id');
 
-        // STEP 2: Dari reading TERBARU itu saja, filter status ALARM/DANGER.
-        // TIDAK filter analysis dulu — banyak latest reading yang analysis-nya
-        // kosong, tapi analysis-nya ADA di reading sebelumnya. Kami ambil
-        // analysis dari reading terakhir yang PUNYA analysis sebagai fallback.
-        // STEP 2a: Cari ID reading terakhir yang PUNYA analysis per equipment
-        // (untuk fallback analysis jika latest reading analysis-nya kosong)
+        // STEP 2a: Cari ID reading TERAKHIR yang ALARM/DANGER vib>threshold
+        // per equipment (untuk fallback Opsi A)
+        $lastAlarmDangerIds = DB::table('cm_readings as r1')
+            ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereIn('r1.kondisi', $statusFilter)
+            ->where('r1.max_vibration', '>', $vibThreshold)
+            ->groupBy('r1.cm_equipment_id')
+            ->pluck('id');
+
+        // STEP 2b: Cari ID reading terakhir yang PUNYA analysis per equipment
+        // (untuk fallback analysis jika reading hasil fallback analysis-nya kosong)
         $latestAnalysisIds = DB::table('cm_readings as r1')
             ->select(DB::raw('MAX(r1.id) as id'))
             ->whereNotNull('r1.analysis')
@@ -542,40 +552,87 @@ class CmController extends Controller
             ->groupBy('r1.cm_equipment_id')
             ->pluck('id');
 
-        // STEP 2b: Ambil semua latest reading alarm/danger (tanpa filter analysis)
-        $baseLatestRaw = DB::table('cm_readings')
+        // STEP 2c: Ambil SEMUA data yang relevan — gabung via UNION logic
+        // Set A: Latest reading ALARM/DANGER (masih aktif)
+        // Set B: Latest GOOD/VISUAL_BAD vib≤0.5, fallback ke alarm/danger terakhir
+        $alarmDangerLatest = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
             ->whereIn('cm_readings.id', $latestReadingIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold);
 
-        if ($filterTahun) { $baseLatestRaw->whereYear('cm_readings.tanggal', $filterTahun); }
-        if ($filterBulan) { $baseLatestRaw->whereMonth('cm_readings.tanggal', $filterBulan); }
-        if ($filterPt) { $baseLatestRaw->where('cm_equipment.pt_location', $filterPt); }
+        // Equipment yang latest GOOD/VISUAL_BAD vib≤0.5 — ambil reading
+        // alarm/danger TERAKHIR-nya sebagai fallback
+        $goodLowLatestIds = DB::table('cm_readings')
+            ->whereIn('id', $latestReadingIds)
+            ->whereIn('kondisi', ['good', 'visual_bad'])
+            ->where('max_vibration', '<=', 0.5)
+            ->pluck('cm_equipment_id');
 
-        // LEFT JOIN ke analysis fallback
-        $latestRows = (clone $baseLatestRaw)
-            ->leftJoinSub(
-                DB::table('cm_readings')
-                    ->select('cm_equipment_id', 'analysis as fallback_analysis')
-                    ->whereIn('id', $latestAnalysisIds),
-                'fallback',
-                'fallback.cm_equipment_id', '=', 'cm_readings.cm_equipment_id'
-            )
+        $fallbackSet = DB::table('cm_readings')
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->whereIn('cm_readings.id', $lastAlarmDangerIds)
+            ->whereIn('cm_readings.cm_equipment_id', $goodLowLatestIds);
+
+        // Gabung filter
+        if ($filterTahun) {
+            $alarmDangerLatest->whereYear('cm_readings.tanggal', $filterTahun);
+            $fallbackSet->whereYear('cm_readings.tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $alarmDangerLatest->whereMonth('cm_readings.tanggal', $filterBulan);
+            $fallbackSet->whereMonth('cm_readings.tanggal', $filterBulan);
+        }
+        if ($filterPt) {
+            $alarmDangerLatest->where('cm_equipment.pt_location', $filterPt);
+            $fallbackSet->where('cm_equipment.pt_location', $filterPt);
+        }
+
+        // LEFT JOIN ke analysis fallback untuk kedua set
+        $analysisFallbackTable = DB::table('cm_readings')
+            ->select('cm_equipment_id', 'analysis as fallback_analysis')
+            ->whereIn('id', $latestAnalysisIds);
+
+        $alarmDangerRows = (clone $alarmDangerLatest)
+            ->leftJoinSub($analysisFallbackTable, 'fb_ad', 'fb_ad.cm_equipment_id', '=', 'cm_readings.cm_equipment_id')
             ->select(
+                DB::raw("'aktif' as source"),
                 'cm_equipment.pt_location',
-                DB::raw("COALESCE(NULLIF(cm_readings.analysis, ''), fallback.fallback_analysis) as analysis"),
+                DB::raw("COALESCE(NULLIF(cm_readings.analysis, ''), fb_ad.fallback_analysis) as analysis"),
                 'cm_readings.cm_equipment_id',
                 'cm_equipment.equipment_tag',
                 'cm_readings.kondisi',
                 'cm_readings.tanggal'
-            )
-            ->get()
+            );
+
+        $fallbackRows = (clone $fallbackSet)
+            ->leftJoinSub($analysisFallbackTable, 'fb_fb', 'fb_fb.cm_equipment_id', '=', 'cm_readings.cm_equipment_id')
+            ->select(
+                DB::raw("'fallback' as source"),
+                'cm_equipment.pt_location',
+                DB::raw("COALESCE(NULLIF(cm_readings.analysis, ''), fb_fb.fallback_analysis) as analysis"),
+                'cm_readings.cm_equipment_id',
+                'cm_equipment.equipment_tag',
+                'cm_readings.kondisi',
+                'cm_readings.tanggal'
+            );
+
+        // Union kedua set — pakai raw SQL karena Eloquent tidak mendukung union
+        // antar query builder yang sudah di-joinSub
+        $unionSql = "({$alarmDangerRows->toSql()}) UNION ({$fallbackRows->toSql()})";
+        $unionBindings = array_merge(
+            $alarmDangerRows->getBindings(),
+            $fallbackRows->getBindings()
+        );
+
+        $latestRows = collect(DB::select($unionSql, $unionBindings))
             ->filter(function ($row) {
-                // Hanya equipment yang analysis-nya terisi (dari latest atau fallback)
                 return !empty($row->analysis);
             })
             ->values();
+
+        // Pastikan unik per equipment (fallback tidak boleh duplikat dengan aktif)
+        $latestRows = $latestRows->unique('cm_equipment_id')->values();
 
         // Daftar PT
         $ptListForCards = $filterPt
