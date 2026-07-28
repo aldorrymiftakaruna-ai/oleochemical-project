@@ -13,9 +13,10 @@ class CmReadingsExport
      * @param  string|null  $filterPt
      * @param  string|null  $filterTahun
      * @param  string|null  $filterBulan
+     * @param  string|null  $filterStatus
      * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
      */
-    public function export(?string $filterPt = null, ?string $filterTahun = null, ?string $filterBulan = null)
+    public function export(?string $filterPt = null, ?string $filterTahun = null, ?string $filterBulan = null, ?string $filterStatus = null)
     {
         $query = CmReading::with('equipment')->orderBy('tanggal', 'desc');
 
@@ -27,6 +28,9 @@ class CmReadingsExport
         }
         if ($filterBulan) {
             $query->whereMonth('tanggal', $filterBulan);
+        }
+        if ($filterStatus) {
+            $query->where('kondisi', $filterStatus);
         }
 
         $readings = $query->get();

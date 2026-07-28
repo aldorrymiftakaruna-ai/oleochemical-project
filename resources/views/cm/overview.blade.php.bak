@@ -226,46 +226,6 @@ var importLogId = null;
 var pollInterval = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadChartData();
-
-    document.querySelectorAll('.filter-select').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-            loadChartData();
-        });
-    });
-
-    // Drag & drop event listeners
-    var dropZone = document.getElementById('dropZone');
-    var dragFileInput = document.getElementById('fileInput');
-
-    if (dropZone && dragFileInput) {
-        dropZone.addEventListener('click', function() {
-            dragFileInput.click();
-        });
-
-        dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            dropZone.classList.add('border-teal-500', 'bg-teal-50');
-        });
-
-        dropZone.addEventListener('dragleave', function() {
-            dropZone.classList.remove('border-teal-500', 'bg-teal-50');
-        });
-
-        dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dropZone.classList.remove('border-teal-500', 'bg-teal-50');
-            if (e.dataTransfer.files.length) {
-                dragFileInput.files = e.dataTransfer.files;
-                onFileSelect();
-            }
-        });
-
-        dragFileInput.addEventListener('change', onFileSelect);
-    }
-});
-
-function openImportModal() {
     document.getElementById('importModal').classList.remove('hidden');
     document.getElementById('importResult').classList.add('hidden');
     document.getElementById('uploadProgress').classList.add('hidden');
@@ -282,8 +242,36 @@ function closeImportModal() {
     }
 }
 
+// Drag & drop
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', function() {
+    fileInput.click();
+});
+
+dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('border-teal-500', 'bg-teal-50');
+});
+
+dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('border-teal-500', 'bg-teal-50');
+});
+
+dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('border-teal-500', 'bg-teal-50');
+    if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        onFileSelect();
+    }
+});
+
+fileInput.addEventListener('change', onFileSelect);
+
 function onFileSelect() {
-    var file = document.getElementById('fileInput').files[0];
+    var file = fileInput.files[0];
     if (file) {
         document.getElementById('fileNameDisplay').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
         document.getElementById('uploadBtn').disabled = false;
@@ -294,7 +282,7 @@ function onFileSelect() {
 }
 
 function uploadImport() {
-    var file = document.getElementById('fileInput').files[0];
+    var file = fileInput.files[0];
     if (!file) {
         showImportResult('error', 'Silakan pilih file terlebih dahulu.');
         return;
@@ -350,6 +338,7 @@ function startPolling() {
                     document.getElementById('uploadProgress').classList.add('hidden');
                     showImportResult(data.status === 'completed' ? 'success' : 'error', formatResult(data));
                     document.getElementById('uploadBtn').disabled = false;
+                    // Reload data charts setelah import selesai
                     if (data.status === 'completed' && typeof loadChartData === 'function') {
                         loadChartData();
                     }
@@ -424,6 +413,20 @@ function showImportResult(type, message) {
     }
     el.innerHTML = message;
 }
+</script>
+var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
+var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
+var kondisiOrder = ['good', 'alarm', 'danger', 'visual_bad'];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadChartData();
+
+    document.querySelectorAll('.filter-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            loadChartData();
+        });
+    });
+});
 
 function loadChartData() {
     showLoading(true);

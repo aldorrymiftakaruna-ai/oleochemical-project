@@ -1,4 +1,4 @@
-{{-- Tab navigasi untuk halaman Condition Monitoring --}}
+﻿{{-- Tab navigasi untuk halaman Condition Monitoring --}}
 <div class="mb-6 border-b border-slate-200">
     <nav class="flex overflow-x-auto gap-1 -mb-px">
         <a href="{{ route('cm.overview') }}"
@@ -8,14 +8,6 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
             </svg>
             Overview
-        </a>
-        <a href="{{ route('cm.equipment-detail') }}"
-           class="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
-                  {{ request()->routeIs('cm.equipment-detail') ? 'border-teal-500 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' }}">
-            <svg class="w-4 h-4 inline -mt-0.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-            </svg>
-            Equipment Detail
         </a>
         <a href="{{ route('cm.equipment-status') }}"
            class="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors

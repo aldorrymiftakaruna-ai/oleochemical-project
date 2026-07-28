@@ -5,18 +5,6 @@
 
 @section("content")
 
-<div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h3 class="text-sm font-semibold text-slate-900">Filter Rentang Waktu</h3>
-        <div class="flex items-center gap-2 flex-wrap">
-<a href="?range=7" class="px-4 py-2 text-xs font-medium rounded-lg border transition-colors {{ $range === "7" ? "bg-teal-50 text-teal-700 border-teal-300" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50" }}">7 Hari</a>
-<a href="?range=30" class="px-4 py-2 text-xs font-medium rounded-lg border transition-colors {{ $range === "30" ? "bg-teal-50 text-teal-700 border-teal-300" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50" }}">30 Hari</a>
-<a href="?range=90" class="px-4 py-2 text-xs font-medium rounded-lg border transition-colors {{ $range === "90" ? "bg-teal-50 text-teal-700 border-teal-300" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50" }}">90 Hari</a>
-<a href="?range=365" class="px-4 py-2 text-xs font-medium rounded-lg border transition-colors {{ $range === "365" ? "bg-teal-50 text-teal-700 border-teal-300" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50" }}">1 Tahun</a>
-<a href="?range=all" class="px-4 py-2 text-xs font-medium rounded-lg border transition-colors {{ $range === "all" ? "bg-teal-50 text-teal-700 border-teal-300" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50" }}">Semua</a>
-        </div>
-    </div>
-</div>
 <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="min-w-0">
@@ -54,10 +42,15 @@
                 @endif
             </p>
         </div>
-        <div class="shrink-0">
+        <div class="shrink-0 flex items-center gap-2">
+            <a href="{{ route('cm.report-analysis') }}"
+               class="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                Report Analysis
+            </a>
             <a href="{{ route('cm.equipment-status') }}" class="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                Kembali ke Equipment Status
+                Equipment Status
             </a>
         </div>
     </div>
@@ -81,12 +74,33 @@
     </div>
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
-        <h3 class="text-sm font-semibold text-slate-900 mb-4">Informasi Spek</h3>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-slate-900">Informasi Spek</h3>
+            <button onclick="document.getElementById('editSpekModal').classList.remove('hidden')"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                    title="Edit Informasi Spek">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                </svg>
+            </button>
+        </div>
         <div class="space-y-3">
             <div>
                 <p class="text-xs text-slate-400">Company</p>
                 <p class="text-sm text-slate-800 font-medium">{{ $equipment->asset?->company?->name ?? $equipment->asset?->company?->code ?? "—" }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">Equipment No (SAP)</p>
+                <p class="text-sm font-mono text-slate-800">{{ $equipment->asset?->equipment_no ?? "—" }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">Tech Ident No (SAP)</p>
+                <p class="text-sm font-mono text-slate-800">{{ $equipment->asset?->tech_ident_no ?? "—" }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">Description</p>
+                <p class="text-sm text-slate-800">{{ $equipment->asset?->description ?? "—" }}</p>
             </div>
             <div>
                 <p class="text-xs text-slate-400">Manufacturer</p>
@@ -100,11 +114,16 @@
                 <p class="text-xs text-slate-400">Construct Year</p>
                 <p class="text-sm text-slate-800">{{ $equipment->asset?->construct_year ?? "—" }}</p>
             </div>
-            <div>
-                <p class="text-xs text-slate-400">Equipment No</p>
-                <p class="text-sm font-mono text-slate-800">{{ $equipment->asset?->equipment_no ?? "—" }}</p>
-            </div>
         </div>
+        @if(!$equipment->asset)
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <a href="{{ route('assets.create') }}?equipment_no={{ urlencode($equipment->equipment_tag) }}"
+               class="inline-flex items-center gap-1.5 text-sm text-teal-600 hover:text-teal-800 hover:underline font-medium">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Tambah Asset ke Asset Management
+            </a>
+        </div>
+        @endif
     </div>
     <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col justify-between">
@@ -158,6 +177,27 @@
         <div class="mt-1">@if($mtbfData["last_failure"])<p class="text-sm font-semibold text-slate-800">{{ $mtbfData["last_failure"] }}</p><p class="text-xs text-slate-500 mt-0.5">({{ $mtbfData["days_since"] }} hari lalu)</p>@else<p class="text-sm font-semibold text-slate-800">—</p>@endif</div>
     </div>
 </div>
+{{-- Filter Rentang Waktu — dropdown tahun --}}
+<div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h3 class="text-sm font-semibold text-slate-900">Filter Rentang Waktu</h3>
+        <div class="flex items-center gap-3">
+            <form method="GET" class="flex items-center gap-2">
+                <label for="yearFilter" class="text-xs text-slate-500">Tahun:</label>
+                <select name="range" id="yearFilter"
+                        onchange="this.form.submit()"
+                        class="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400">
+                    <option value="all" {{ $range === "all" ? "selected" : "" }}>Semua</option>
+                    @foreach($availableYears as $year)
+                    <option value="{{ $year }}" {{ $range === (string) $year ? "selected" : "" }}>{{ $year }}</option>
+                    @endforeach
+                </select>
+                <noscript><button type="submit" class="px-3 py-2 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50">Terapkan</button></noscript>
+            </form>
+        </div>
+    </div>
+</div>
+
 {{-- Trending Vibrasi Motor --}}
 @if(count($chartData) > 0)
 <div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
@@ -167,10 +207,51 @@
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #0E9E8E"></span> NDEV</span>
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #F59E0B"></span> NDEH</span>
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #EF4444"></span> NDEA</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #8B5CF6"></span> DEV</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #EC4899"></span> DEH</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #06B6D4"></span> DEA</span>
         </div>
     </div>
     <div class="relative" style="height: 300px;">
-        <canvas id="vibrationChart" name="vibrationChart"></canvas>
+        <canvas id="vibrationMotorChart" name="vibrationMotorChart"></canvas>
+    </div>
+</div>
+@endif
+
+{{-- Trending Vibrasi Pompa --}}
+@if(count($chartData) > 0)
+<div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-slate-900">Trending Vibrasi Pompa</h3>
+        <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #0E9E8E"></span> NDEV</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #F59E0B"></span> NDEH</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #EF4444"></span> NDEA</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #8B5CF6"></span> DEV</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #EC4899"></span> DEH</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #06B6D4"></span> DEA</span>
+        </div>
+    </div>
+    <div class="relative" style="height: 300px;">
+        <canvas id="vibrationPompaChart" name="vibrationPompaChart"></canvas>
+    </div>
+</div>
+@endif
+
+{{-- Trending Temperature --}}
+@if(count($chartData) > 0)
+<div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-slate-900">Trending Temperature</h3>
+        <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #EF4444"></span> DE Motor</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #F97316"></span> NDE Motor</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #3B82F6"></span> DE Pompa</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #8B5CF6"></span> NDE Pompa</span>
+        </div>
+    </div>
+    <div class="relative" style="height: 300px;">
+        <canvas id="temperatureChart" name="temperatureChart"></canvas>
     </div>
 </div>
 @endif
@@ -193,7 +274,7 @@
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     Buat Finding Baru
                 </a>
-                <span class="text-xs text-amber-600 self-center">atau <a href="#vibrationChart" class="underline hover:text-amber-800">Lihat detail trend</a></span>
+                <span class="text-xs text-amber-600 self-center">atau <a href="#vibrationMotorChart" class="underline hover:text-amber-800">Lihat detail trend motor</a></span>
             </div>
             @if($vibrationInsight['projected_days_to_danger'])
                 <p class="text-xs text-amber-600 mt-2">
@@ -292,7 +373,7 @@
                         $isOpen = $f->status === "open";
                     @endphp
                     <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="px-4 py-3"><span class="font-mono text-xs text-teal-700 font-medium">{{ $f->kode_finding }}</span></td>
+                        <td class="px-4 py-3"><a href="{{ route('cm.findings.show', $f->kode_finding) }}" class="font-mono text-xs text-teal-700 font-medium hover:text-teal-900 hover:underline transition-colors">{{ $f->kode_finding }}</a></td>
                         <td class="px-4 py-3 text-center"><span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full {{ $sevColor }}">{{ ucfirst($f->severity) }}</span></td>
                         <td class="px-4 py-3 text-xs text-slate-600">{{ $f->kategori ?? "—" }}</td>
                         <td class="px-4 py-3 text-xs text-slate-700 max-w-[250px] truncate" title="{{ $f->deskripsi }}">{{ $f->deskripsi ?? "—" }}</td>
@@ -308,47 +389,164 @@
         </table>
     </div>
 </div>
+{{-- Modal Edit Informasi Spek --}}
+<div id="editSpekModal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <h3 class="text-sm font-semibold text-slate-900">Edit Informasi Spek</h3>
+            <button onclick="document.getElementById('editSpekModal').classList.add('hidden')" class="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <form method="POST" action="{{ route('cm.equipment-update', $equipment->equipment_tag) }}" class="p-6 space-y-4">
+            @csrf
+            @method('PUT')
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Tipe Lubrikasi</label>
+                <input type="text" name="tipe_lubrikasi" value="{{ old('tipe_lubrikasi', $equipment->tipe_lubrikasi) }}"
+                       class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
+                       placeholder="—">
+            </div>
+            <hr class="border-slate-100">
+            <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Data Asset (cadangan untuk equipment tanpa SAP)</p>
+            <p class="text-xs text-slate-400">Data asset dari SAP (Equipment No, Tech Ident, Description) hanya bisa diisi via import Asset Management. Field di bawah ini adalah cadangan untuk equipment yang belum terdaftar di SAP.</p>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Manufacturer</label>
+                <input type="text" name="manufacturer" value="{{ old('manufacturer', $equipment->asset?->manufacturer) }}"
+                       class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
+                       placeholder="—">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Model Number</label>
+                <input type="text" name="model_number" value="{{ old('model_number', $equipment->asset?->model_number) }}"
+                       class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
+                       placeholder="—">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Construct Year</label>
+                <input type="number" name="construct_year" value="{{ old('construct_year', $equipment->asset?->construct_year) }}"
+                       class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
+                       min="1900" max="2099" placeholder="—">
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onclick="document.getElementById('editSpekModal').classList.add('hidden')"
+                        class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                    Batal
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors" style="background: #0E9E8E;">
+                    Simpan
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function() {
-    var canvas = document.getElementById('vibrationChart');
-    if (!canvas) return;
+    function hasNonNullData(data, keys) {
+        return data.some(function(d) { return keys.some(function(k) { return d[k] !== null && d[k] !== undefined; }); });
+    }
+
+    function filterNullKeys(data, keys) {
+        var filtered = [];
+        keys.forEach(function(k) {
+            if (data.some(function(d) { return d[k] !== null && d[k] !== undefined; })) {
+                filtered.push(k);
+            }
+        });
+        return filtered;
+    }
 
     var chartData = @json($chartData);
     if (!chartData || chartData.length === 0) return;
 
     var labels = chartData.map(function(d) { return d.tanggal; });
-    var ndev = chartData.map(function(d) { return d.ndev_motor; });
-    var ndeh = chartData.map(function(d) { return d.ndeh_motor; });
-    var ndea = chartData.map(function(d) { return d.ndea_motor; });
 
-    new Chart(canvas, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                { label: 'NDEV Motor', data: ndev, borderColor: '#0E9E8E', backgroundColor: 'rgba(14,158,142,0.1)', borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false },
-                { label: 'NDEH Motor', data: ndeh, borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.1)', borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false },
-                { label: 'NDEA Motor', data: ndea, borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { intersect: false, mode: 'index' },
-            plugins: {
-                legend: { display: false },
-                tooltip: { backgroundColor: '#1E293B', titleFont: { size: 12 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94A3B8', maxRotation: 45, maxTicksLimit: 12 } },
-                y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { font: { size: 10 }, color: '#94A3B8' }, title: { display: true, text: 'mm/s', color: '#94A3B8', font: { size: 11 } } }
+    var colorMap = {
+        'ndev_motor': { color: '#0E9E8E', label: 'NDEV Motor' },
+        'ndeh_motor': { color: '#F59E0B', label: 'NDEH Motor' },
+        'ndea_motor': { color: '#EF4444', label: 'NDEA Motor' },
+        'dev_motor':  { color: '#8B5CF6', label: 'DEV Motor' },
+        'deh_motor':  { color: '#EC4899', label: 'DEH Motor' },
+        'dea_motor':  { color: '#06B6D4', label: 'DEA Motor' },
+        'ndev_pompa': { color: '#0E9E8E', label: 'NDEV Pompa' },
+        'ndeh_pompa': { color: '#F59E0B', label: 'NDEH Pompa' },
+        'ndea_pompa': { color: '#EF4444', label: 'NDEA Pompa' },
+        'dev_pompa':  { color: '#8B5CF6', label: 'DEV Pompa' },
+        'deh_pompa':  { color: '#EC4899', label: 'DEH Pompa' },
+        'dea_pompa':  { color: '#06B6D4', label: 'DEA Pompa' },
+        'temp_de_motor':  { color: '#EF4444', label: 'DE Motor' },
+        'temp_nde_motor': { color: '#F97316', label: 'NDE Motor' },
+        'temp_de_pompa':  { color: '#3B82F6', label: 'DE Pompa' },
+        'temp_nde_pompa': { color: '#8B5CF6', label: 'NDE Pompa' },
+    };
+
+    function buildDatasets(data, keys, unit) {
+        var activeKeys = filterNullKeys(data, keys);
+        return activeKeys.map(function(k) {
+            var meta = colorMap[k] || { color: '#94A3B8', label: k };
+            return {
+                label: meta.label,
+                data: data.map(function(d) { return d[k]; }),
+                borderColor: meta.color,
+                backgroundColor: meta.color + '20',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                tension: 0.3,
+                fill: false
+            };
+        });
+    }
+
+    function renderChart(canvasId, keys, yLabel) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!hasNonNullData(chartData, keys)) return;
+
+        var datasets = buildDatasets(chartData, keys, yLabel);
+        if (datasets.length === 0) return;
+
+        new Chart(canvas, {
+            type: 'line',
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { backgroundColor: '#1E293B', titleFont: { size: 12 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94A3B8', maxRotation: 45, maxTicksLimit: 12 } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { font: { size: 10 }, color: '#94A3B8' }, title: { display: true, text: yLabel, color: '#94A3B8', font: { size: 11 } } }
+                }
             }
-        }
     });
+    }
+
+    // Chart 1: Vibrasi Motor
+    renderChart('vibrationMotorChart', [
+        'ndev_motor', 'ndeh_motor', 'ndea_motor',
+        'dev_motor', 'deh_motor', 'dea_motor'
+    ], 'mm/s');
+
+    // Chart 2: Vibrasi Pompa
+    renderChart('vibrationPompaChart', [
+        'ndev_pompa', 'ndeh_pompa', 'ndea_pompa',
+        'dev_pompa', 'deh_pompa', 'dea_pompa'
+    ], 'mm/s');
+
+    // Chart 3: Temperature
+    renderChart('temperatureChart', [
+        'temp_de_motor', 'temp_nde_motor',
+        'temp_de_pompa', 'temp_nde_pompa'
+    ], '°C');
 })();
 </script>
 @endpush

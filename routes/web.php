@@ -4,6 +4,7 @@ use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\CmController;
+use App\Http\Controllers\CmImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
@@ -76,13 +77,28 @@ Route::middleware('admin')->group(function () {
     Route::prefix('cm')->name('cm.')->group(function () {
         Route::get('/overview', [CmController::class, 'overview'])->name('overview');
         Route::get('/findings', [CmController::class, 'findings'])->name('findings');
+        Route::get('/findings/{kodeFinding}', [CmController::class, 'findingShow'])->name('findings.show');
         Route::get('/monitoring', [CmController::class, 'monitoring'])->name('monitoring');
         Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
+        Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
+        Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
         Route::get('/trend-chart-data', [CmController::class, 'trendChartData'])->name('trend-chart-data');
         Route::get('/donut-data', [CmController::class, 'donutData'])->name('donut-data');
         Route::get('/overview-summary', [CmController::class, 'overviewSummary'])->name('overview-summary');
+
+        // Import Excel
+        Route::get('/import', [CmImportController::class, 'showImport'])->name('import.show');
+        Route::post('/import/upload', [CmImportController::class, 'uploadImport'])->name('import.upload');
+        Route::get('/import/status/{id}', [CmImportController::class, 'checkStatus'])->name('import.status');
+
+        // Riwayat Import Excel
+        Route::prefix('imports')->name('imports.')->group(function () {
+            Route::get('/', [CmImportController::class, 'history'])->name('history');
+            Route::get('/{importLog}', [CmImportController::class, 'historyDetail'])->name('detail');
+            Route::post('/{importLog}/undo', [CmImportController::class, 'undoImport'])->name('undo');
+        });
 
         // Export
         Route::get('/export/readings', [CmController::class, 'exportReadings'])->name('export-readings');

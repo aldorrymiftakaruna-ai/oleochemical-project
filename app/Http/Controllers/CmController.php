@@ -393,6 +393,22 @@ class CmController extends Controller
         // ------------------------------------------------------------------
         $vibrationInsight = $this->detectVibrationTrend($chartData);
 
+        // Tahun-tahun yang tersedia untuk dropdown filter
+        $availableYears = $equipment->readings()
+            ->selectRaw('YEAR(tanggal) as year')
+            ->distinct()
+            ->orderBy('year', 'desc')
+            ->pluck('year')
+            ->toArray();
+        $currentYear = (int) now()->format('Y');
+        if (!in_array($currentYear, $availableYears)) {
+            $availableYears[] = $currentYear;
+        }
+        if (!in_array($currentYear + 1, $availableYears)) {
+            $availableYears[] = $currentYear + 1;
+        }
+        rsort($availableYears);
+
         return view('cm.equipment-show', compact(
             'equipment',
             'lastReading',
@@ -404,7 +420,8 @@ class CmController extends Controller
             'totalFindingsOpen',
             'totalFindingsClosed',
             'mtbfData',
-            'vibrationInsight'
+            'vibrationInsight',
+            'availableYears'
         ));
     }
 
@@ -999,165 +1016,91 @@ class CmController extends Controller
         ));
     }
 
-    /**
+        /**
      * Deteksi trend kenaikan vibrasi motor (NDEV, NDEH, NDEA) dari data
      * chart yang sudah di-sort ascending. Mengembalikan array insight
      * atau null jika tidak ada kenaikan signifikan.
      *
-     * @param  \Illuminate\Support\Collection  $chartData  collection of {tanggal, ndev_motor, ndeh_motor, ndea_motor}
-     * @return array|null  ['parameter', 'from_val', 'to_val', 'days_span', 'projection_days', 'message']
+     * Hanya data non-zero yang diproses - data vibrasi 0 mm/s berarti
+     * equipment belum running / belum diambil, tidak dianggap tren.
+     *
+     * @param  \Illuminate\Support\Collection  $chartData
+     * @return array|null
      */
     private function detectVibrationTrend($chartData): ?array
     {
-        $config      = config('cm.vibration_insight');
-        $minPoints   = $config['min_data_points'] ?? 3;
-        $risePct     = $config['significant_rise_pct'] ?? 20;
-        $baselineCnt = $config['baseline_count'] ?? 3;
-        $projDays    = $config['projection_days'] ?? 30;
-        $alarmThr    = $config['thresholds']['alarm'] ?? 7.1;
-        $dangerThr   = $config['thresholds']['danger'] ?? 11.2;
+        $config = config('cm.vibration_insight');
+        $minPoints = $config['min_data_points'] ?? 3;
+        $risePct = $config['significant_rise_pct'] ?? 20;
+        $alarmThreshold = $config['alarm_threshold'] ?? 4.5;
+        $dangerThreshold = $config['danger_threshold'] ?? 10.0;
 
-        if (!$chartData || $chartData->count() < $minPoints) {
-            return null;
-        }
-
-        // Parameter motor yang dipantau untuk insight
-        $params = [
-            ['key' => 'ndev_motor', 'label' => 'NDEV'],
-            ['key' => 'ndeh_motor', 'label' => 'NDEH'],
-            ['key' => 'ndea_motor', 'label' => 'NDEA'],
-        ];
-
-        $data = $chartData->values();
+        $params = ['ndev_motor', 'ndeh_motor', 'ndea_motor'];
+        $insight = null;
 
         foreach ($params as $param) {
-            $key = $param['key'];
+            $validPoints = collect($chartData)
+                ->filter(fn($d) => isset($d[$param]) && $d[$param] !== null && $d[$param] > 0)
+                ->values();
 
-            // Ambil N titik terakhir yang tidak null
-            $recentValues = $data->pluck($key)->filter(function ($v) {
-                return $v !== null && $v !== '';
-            })->values();
-
-            if ($recentValues->count() < $minPoints) {
+            if ($validPoints->count() < $minPoints) {
                 continue;
             }
 
-            // Ambil N titik terakhir
-            $lastN = $recentValues->slice(-$minPoints);
+            $first = $validPoints->first()[$param];
+            $last  = $validPoints->last()[$param];
 
-            // Hitung slope (linear regression) dari titik terakhir
-            $indices = range(0, $lastN->count() - 1);
-            $vals    = $lastN->values()->toArray();
-
-            $slope = $this->calculateSlope($indices, $vals);
-
-            // Jika slope negatif atau mendekati nol — stabil/menurun, skip
-            if ($slope <= 0.001) {
+            if ($first <= 0 || $last <= 0) {
                 continue;
             }
 
-            // Ambil rata-rata baseline (N titik sebelum titik terakhir)
-            $baselineValues = $recentValues->slice(-$minPoints - $baselineCnt, $baselineCnt);
+            $pctChange = $first > 0 ? (($last - $first) / $first) * 100 : 0;
 
-            if ($baselineValues->count() < 1) {
-                continue;
-            }
+            if ($pctChange >= $risePct && $last > $first) {
+                $firstDate = \Carbon\Carbon::parse($validPoints->first()['tanggal']);
+                $lastDate  = \Carbon\Carbon::parse($validPoints->last()['tanggal']);
+                $daysSpan  = $firstDate->diffInDays($lastDate);
 
-            $baselineAvg = $baselineValues->avg();
-            $latestVal   = $lastN->last();
+                $projectedDaysToAlarm = null;
+                $projectedDaysToDanger = null;
+                if ($daysSpan > 0) {
+                    $slope = ($last - $first) / $daysSpan;
+                    if ($slope > 0) {
+                        if ($alarmThreshold > $last) {
+                            $projectedDaysToAlarm = ceil(($alarmThreshold - $last) / $slope);
+                        }
+                        if ($dangerThreshold > $last) {
+                            $projectedDaysToDanger = ceil(($dangerThreshold - $last) / $slope);
+                        }
+                    }
+                }
 
-            // Bandingkan kenaikan persentase terhadap rata-rata baseline
-            $riseRatio = $baselineAvg > 0 ? (($latestVal - $baselineAvg) / $baselineAvg) * 100 : 0;
+                $paramLabels = [
+                    'ndev_motor' => 'NDEV Motor',
+                    'ndeh_motor' => 'NDEH Motor',
+                    'ndea_motor' => 'NDEA Motor',
+                ];
+                $label = $paramLabels[$param] ?? $param;
 
-            if ($riseRatio < $risePct) {
-                // Cek proyeksi ke batas danger
-                $daysToDanger = $slope > 0 ? ($dangerThr - $latestVal) / $slope : PHP_FLOAT_MAX;
+                $msg = "Tren vibrasi {$label} naik signifikan (dari " . number_format($first, 2) . " mm/s ke " . number_format($last, 2) . " mm/s dalam {$daysSpan} hari terakhir, kenaikan " . round($pctChange, 1) . "%).";
 
-                if ($daysToDanger > $projDays) {
-                    continue; // Tidak signifikan dan tidak dalam jangka waktu proyeksi
+                $insight = [
+                    'parameter' => $param,
+                    'from_val' => $first,
+                    'to_val' => $last,
+                    'days_span' => $daysSpan,
+                    'projected_days_to_alarm' => $projectedDaysToAlarm,
+                    'projected_days_to_danger' => $projectedDaysToDanger,
+                    'message' => $msg,
+                ];
+
+                if ($param === 'ndea_motor') {
+                    break;
                 }
             }
-
-            // Hitung selisih hari antara titik pertama dan terakhir
-            $firstDate = $data[$data->count() - $lastN->count()]['tanggal'] ?? null;
-            $lastDate  = $data->last()['tanggal'] ?? null;
-            $daysSpan  = 0;
-            if ($firstDate && $lastDate) {
-                $daysSpan = \Carbon\Carbon::parse($lastDate)->diffInDays(\Carbon\Carbon::parse($firstDate));
-            }
-
-            // Dari nilai awal ke nilai akhir
-            $fromVal = $lastN->first();
-            $toVal   = $latestVal;
-
-            // Proyeksi ke batas danger
-            $projectedDaysToDanger = $slope > 0 ? ($dangerThr - $latestVal) / $slope : PHP_FLOAT_MAX;
-            $projectedDaysToAlarm  = $slope > 0 ? ($alarmThr - $latestVal) / $slope : PHP_FLOAT_MAX;
-
-            $projectionMsg = '';
-            $nearestDays   = null;
-
-            if ($projectedDaysToDanger <= $projDays && $projectedDaysToDanger > 0) {
-                $nearestDays = ceil($projectedDaysToDanger);
-                $projectionMsg = "Proyeksi menyentuh batas Danger dalam ~{$nearestDays} hari.";
-            } elseif ($projectedDaysToAlarm <= $projDays && $projectedDaysToAlarm > 0) {
-                $nearestDays = ceil($projectedDaysToAlarm);
-                $projectionMsg = "Proyeksi menyentuh batas Alarm dalam ~{$nearestDays} hari.";
-            }
-
-            return [
-                'parameter'    => $param['label'],
-                'from_val'     => number_format($fromVal, 2),
-                'to_val'       => number_format($toVal, 2),
-                'days_span'    => $daysSpan,
-                'rise_pct'     => round($riseRatio, 1),
-                'slope'        => round($slope, 4),
-                'projected_days_to_danger' => $projectedDaysToDanger > 0 && $projectedDaysToDanger < PHP_FLOAT_MAX
-                    ? ceil($projectedDaysToDanger) : null,
-                'projected_days_to_alarm'  => $projectedDaysToAlarm > 0 && $projectedDaysToAlarm < PHP_FLOAT_MAX
-                    ? ceil($projectedDaysToAlarm) : null,
-                'projection_message' => $projectionMsg,
-                'message'      => "Tren vibrasi {$param['label']} naik signifikan (dari "
-                    . number_format($fromVal, 2) . " mm/s ke " . number_format($toVal, 2)
-                    . " mm/s dalam {$daysSpan} hari terakhir, kenaikan {$riseRatio}%). "
-                    . $projectionMsg,
-            ];
         }
 
-        return null;
-    }
-
-    /**
-     * Hitung slope (koefisien linear) dari serangkaian data (x, y).
-     * Menggunakan metode least squares sederhana.
-     *
-     * @param  array  $x  Index/nilai sumbu X (hari ke-0, 1, 2, ...)
-     * @param  array  $y  Nilai sumbu Y (mm/s)
-     * @return float
-     */
-    private function calculateSlope(array $x, array $y): float
-    {
-        $n = count($x);
-        if ($n < 2) {
-            return 0;
-        }
-
-        $sumX  = array_sum($x);
-        $sumY  = array_sum($y);
-        $sumXY = 0;
-        $sumX2 = 0;
-
-        for ($i = 0; $i < $n; $i++) {
-            $sumXY += $x[$i] * $y[$i];
-            $sumX2 += $x[$i] * $x[$i];
-        }
-
-        $denom = ($n * $sumX2 - $sumX * $sumX);
-        if ($denom == 0) {
-            return 0;
-        }
-
-        return ($n * $sumXY - $sumX * $sumY) / $denom;
+        return $insight;
     }
 
     /**

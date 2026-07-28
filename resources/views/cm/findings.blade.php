@@ -32,6 +32,16 @@
         </div>
     </div>
 
+
+
+
+
+
+
+
+
+
+
     {{-- Filters --}}
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <form id="findingsFilterForm" class="flex flex-wrap gap-4 items-end">
@@ -82,12 +92,81 @@
     @push('scripts')
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        var searchInput = document.getElementById('findingsSearch');
         var filterForm = document.getElementById('findingsFilterForm');
         var findingsList = document.getElementById('findingsList');
         var debounceTimer;
 
-        // Live search dengan debounce
+        /**
+         * Ambil semua nilai filter dari form lalu fetch findings via AJAX.
+         */
+        function loadFindings() {
+            var params = new URLSearchParams();
+            if (filterForm) {
+                var formData = new FormData(filterForm);
+                formData.forEach(function(value, key) {
+                    if (value) params.set(key, value);
+                });
+            }
+
+            var url = '{{ route("cm.findings") }}' + '?' + params.toString();
+            window.history.replaceState({}, '', url);
+
+                    fetch(url + '&ajax=1')
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    findingsList.innerHTML = html;
+                    // Re-attach event listener ke link pagination yang baru
+                    attachPaginationHandlers();
+                })
+                .catch(function(err) {
+                    console.error('Error loading findings:', err);
+                });
+        }
+
+        /**
+         * Intercept klik pada link pagination di dalam findingsList
+         * supaya pindah halaman via AJAX, bukan reload penuh.
+         */
+        function attachPaginationHandlers() {
+            findingsList.querySelectorAll('a[href*="page="]').forEach(function(link) {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var pageUrl = link.getAttribute('href');
+                    if (!pageUrl) return;
+
+                    window.history.replaceState({}, '', pageUrl);
+
+                    var ajaxUrl = pageUrl + (pageUrl.indexOf('?') === -1 ? '?' : '&') + 'ajax=1';
+                    fetch(ajaxUrl)
+                        .then(function(r) { return r.text(); })
+                        .then(function(html) {
+                            findingsList.innerHTML = html;
+                            attachPaginationHandlers();
+                        })
+                        .catch(function(err) {
+                            console.error('Error loading findings page:', err);
+                        });
+                });
+            });
+        }
+
+        // Dropdown PT dan Status — langsung filter saat berubah
+        if (filterForm) {
+            filterForm.querySelectorAll('.findings-filter').forEach(function(sel) {
+                sel.addEventListener('change', function() {
+                    loadFindings();
+                });
+            });
+
+            // Submit form via AJAX
+            filterForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                loadFindings();
+            });
+        }
+
+        // Input search — debounce 400ms
+        var searchInput = document.getElementById('findingsSearch');
         if (searchInput) {
             searchInput.addEventListener('keyup', function() {
                 clearTimeout(debounceTimer);
@@ -97,40 +176,8 @@
             });
         }
 
-        // Filter select
-        document.querySelectorAll('.findings-filter').forEach(function(sel) {
-            sel.addEventListener('change', function() {
-                loadFindings();
-            });
-        });
-
-        // Submit form
-        if (filterForm) {
-            filterForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                loadFindings();
-            });
-        }
-
-        function loadFindings() {
-            var params = new URLSearchParams();
-            var formData = new FormData(filterForm);
-            formData.forEach(function(value, key) {
-                if (value) params.set(key, value);
-            });
-
-            var url = '{{ route("cm.findings") }}' + '?' + params.toString();
-            window.history.replaceState({}, '', url);
-
-            fetch(url + '&ajax=1')
-                .then(function(r) { return r.text(); })
-                .then(function(html) {
-                    findingsList.innerHTML = html;
-                })
-                .catch(function(err) {
-                    console.error('Error loading findings:', err);
-                });
-        }
+        // Pasang handler pagination saat pertama kali load
+        attachPaginationHandlers();
     });
     </script>
     @endpush
