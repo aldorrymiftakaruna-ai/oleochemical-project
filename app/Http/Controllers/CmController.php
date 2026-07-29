@@ -455,6 +455,30 @@ class CmController extends Controller
     }
 
     /**
+     * Update informasi spek equipment (tipe_lubrikasi, manufacturer, model_number, construct_year).
+     * Dipanggil dari form modal Edit Informasi Spek di halaman detail equipment.
+     */
+    public function equipmentUpdate(Request $request, string $tag)
+    {
+        $request->validate([
+            'tipe_lubrikasi' => 'nullable|string|max:255',
+            'manufacturer'   => 'nullable|string|max:255',
+            'model_number'   => 'nullable|string|max:255',
+            'construct_year' => 'nullable|integer|min:1900|max:2099',
+        ]);
+
+        $equipment = CmEquipment::where('equipment_tag', $tag)->firstOrFail();
+        $equipment->update($request->only(['tipe_lubrikasi']));
+
+        // Update relasi Asset jika ada
+        if ($equipment->asset && ($request->filled('manufacturer') || $request->filled('model_number') || $request->filled('construct_year'))) {
+            $equipment->asset->update($request->only(['manufacturer', 'model_number', 'construct_year']));
+        }
+
+        return redirect()->back()->with('success', 'Informasi spek berhasil diperbarui.');
+    }
+
+    /**
      * Tampilkan halaman Equipment Status — daftar equipment dengan
      * search, filter PT, filter status, dan ringkasan vibrasi/temperatur.
      *
