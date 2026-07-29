@@ -195,6 +195,18 @@ class CmController extends Controller
     }
 
     /**
+     * Tampilkan detail satu finding berdasarkan kode finding.
+     */
+    public function findingShow(string $kodeFinding)
+    {
+        $finding = CmFinding::with(['equipment', 'workOrder'])
+            ->where('kode_finding', $kodeFinding)
+            ->firstOrFail();
+
+        return view('cm.finding-show', compact('finding'));
+    }
+
+    /**
      * Tampilkan halaman CM Monitoring.
      */
     public function monitoring(Request $request)
