@@ -61,7 +61,12 @@
                                         </x-modal>
                                     @endif
                                     <div>
-                                        <div class="font-mono font-semibold text-slate-900">{{ $finding->equipment->equipment_tag ?? '-' }}</div>
+                                        <div class="font-mono font-semibold">
+                                            <a href="{{ route('cm.equipment-show', $finding->equipment->equipment_tag ?? '-') }}"
+                                               class="text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                                {{ $finding->equipment->equipment_tag ?? '-' }}
+                                            </a>
+                                        </div>
                                         <div class="text-xs text-slate-400">{{ $finding->equipment->pt_location ?? '' }}</div>
                                     </div>
                                 </div>

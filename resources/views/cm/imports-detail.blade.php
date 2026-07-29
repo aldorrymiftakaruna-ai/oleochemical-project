@@ -122,7 +122,12 @@
                     <tbody class="divide-y divide-slate-50">
                         @foreach ($newEquipments as $eq)
                             <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-5 py-3 font-mono text-sm font-medium text-slate-900">{{ $eq->equipment_tag }}</td>
+                                <td class="px-5 py-3">
+                                    <a href="{{ route('cm.equipment-show', $eq->equipment_tag) }}"
+                                       class="font-mono text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                        {{ $eq->equipment_tag }}
+                                    </a>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $eq->pt_location }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $eq->plant }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $eq->tipe_lubrikasi ?? '-' }}</td>

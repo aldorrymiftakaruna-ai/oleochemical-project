@@ -1,69 +1,67 @@
-@extends('layouts.app')
-
-@section('title', 'Overview — Condition Monitoring')
-@section('breadcrumb')
-    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+<?php $__env->startSection('title', 'Overview — Condition Monitoring'); ?>
+<?php $__env->startSection('breadcrumb'); ?>
+    <a href="<?php echo e(route('dashboard')); ?>" class="hover:text-slate-700">Dashboard</a>
     <span class="text-slate-300">/</span>
-    <a href="{{ route('cm.overview') }}" class="hover:text-slate-700">Condition Monitoring</a>
+    <a href="<?php echo e(route('cm.overview')); ?>" class="hover:text-slate-700">Condition Monitoring</a>
     <span class="text-slate-300">/</span>
     <span class="text-slate-900 font-medium">Overview</span>
-@endsection
+<?php $__env->stopSection(); ?>
 
-@section('content')
-    {{-- Tab Navigasi --}}
-    @include('cm._tabs')
+<?php $__env->startSection('content'); ?>
+    
+    <?php echo $__env->make('cm._tabs', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-    {{-- Summary Cards --}}
+    
     <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        @include('cm._overview-cards', [
+        <?php echo $__env->make('cm._overview-cards', [
             'totalRecords' => $totalRecords,
             'goodCount' => $goodCount, 'goodPct' => $goodPct,
             'alarmCount' => $alarmCount, 'alarmPct' => $alarmPct,
             'dangerCount' => $dangerCount, 'dangerPct' => $dangerPct,
             'visualBadCount' => $visualBadCount, 'visualBadPct' => $visualBadPct,
-        ])
+        ], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
     </div>
 
-    {{-- Filters --}}
+    
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <form id="filterForm" class="flex flex-wrap gap-4 items-end">
             <div class="space-y-1">
                 <label class="text-xs font-medium text-slate-500">PT</label>
                 <select name="pt" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                     <option value="">Semua PT</option>
-                    @foreach($ptList as $pt)
-                        <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
-                    @endforeach
+                    <?php $__currentLoopData = $ptList; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $pt): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <option value="<?php echo e($pt); ?>" <?php echo e($filterPt === $pt ? 'selected' : ''); ?>><?php echo e($pt); ?></option>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                 </select>
             </div>
             <div class="space-y-1">
                 <label class="text-xs font-medium text-slate-500">Tahun</label>
                 <select name="tahun" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    @foreach($tahunList as $th)
-                        <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
-                    @endforeach
+                    <?php $__currentLoopData = $tahunList; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $th): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <option value="<?php echo e($th); ?>" <?php echo e($filterTahun == $th ? 'selected' : ''); ?>><?php echo e($th); ?></option>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                 </select>
             </div>
             <div class="space-y-1">
                 <label class="text-xs font-medium text-slate-500">Bulan</label>
                 <select name="bulan" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                     <option value="">Semua Bulan</option>
-                    @foreach(range(1, 12) as $b)
-                        <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
-                    @endforeach
+                    <?php $__currentLoopData = range(1, 12); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $b): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <option value="<?php echo e($b); ?>" <?php echo e($filterBulan == $b ? 'selected' : ''); ?>><?php echo e(DateTime::createFromFormat('!m', $b)->format('F')); ?></option>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                 </select>
             </div>
             <div class="space-y-1">
                 <label class="text-xs font-medium text-slate-500">Status</label>
                 <select name="status" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                     <option value="">Semua Status</option>
-                    <option value="good" {{ $filterStatus === 'good' ? 'selected' : '' }}>Good</option>
-                    <option value="alarm" {{ $filterStatus === 'alarm' ? 'selected' : '' }}>Alarm</option>
-                    <option value="danger" {{ $filterStatus === 'danger' ? 'selected' : '' }}>Danger</option>
-                    <option value="visual_bad" {{ $filterStatus === 'visual_bad' ? 'selected' : '' }}>Visual Bad</option>
+                    <option value="good" <?php echo e($filterStatus === 'good' ? 'selected' : ''); ?>>Good</option>
+                    <option value="alarm" <?php echo e($filterStatus === 'alarm' ? 'selected' : ''); ?>>Alarm</option>
+                    <option value="danger" <?php echo e($filterStatus === 'danger' ? 'selected' : ''); ?>>Danger</option>
+                    <option value="visual_bad" <?php echo e($filterStatus === 'visual_bad' ? 'selected' : ''); ?>>Visual Bad</option>
                 </select>
             </div>
-            <a href="{{ route('cm.overview') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+            <a href="<?php echo e(route('cm.overview')); ?>" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                 Reset
             </a>
             <button type="button" onclick="openImportModal()"
@@ -73,7 +71,7 @@
                 </svg>
                 Import Excel
             </button>
-            <a href="{{ route('cm.export-readings', ['pt' => $filterPt, 'tahun' => $filterTahun, 'bulan' => $filterBulan, 'status' => $filterStatus]) }}"
+            <a href="<?php echo e(route('cm.export-readings', ['pt' => $filterPt, 'tahun' => $filterTahun, 'bulan' => $filterBulan, 'status' => $filterStatus])); ?>"
                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -83,7 +81,7 @@
         </form>
     </div>
 
-    {{-- Loading indicator --}}
+    
     <div id="loadingIndicator" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/10">
         <div class="bg-white rounded-xl p-6 shadow-xl flex items-center gap-3">
             <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
@@ -94,22 +92,22 @@
         </div>
     </div>
 
-    {{-- Charts Row --}}
+    
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {{-- Donut Chart: Breakdown per PT --}}
+        
         <div class="bg-white rounded-xl border border-slate-200 p-5">
             <h3 class="font-medium text-slate-900 mb-4">Breakdown Status per PT</h3>
             <canvas id="donutChart" height="250"></canvas>
         </div>
 
-        {{-- Bar Chart: Trend Bulanan --}}
+        
         <div class="bg-white rounded-xl border border-slate-200 p-5">
             <h3 class="font-medium text-slate-900 mb-4">Trend Status Bulanan</h3>
             <canvas id="trendChart" height="250"></canvas>
         </div>
     </div>
 
-    {{-- Top 10 Vibrasi Tertinggi --}}
+    
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 class="font-medium text-slate-900">Top 10 Vibrasi Tertinggi (Danger)</h3>
@@ -129,19 +127,14 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
-                    @forelse($topVibrasi as $r)
+                    <?php $__empty_1 = true; $__currentLoopData = $topVibrasi; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $r): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                         <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="px-5 py-3">
-                                <a href="{{ route('cm.equipment-show', $r->equipment_tag) }}"
-                                   class="font-mono text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">
-                                    {{ $r->equipment_tag }}
-                                </a>
-                            </td>
-                            <td class="px-5 py-3 text-slate-600">{{ $r->pt_location }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_motor }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_pompa }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->temp_de_motor }}°C</td>
-                            <td class="px-5 py-3 text-slate-500">{{ $r->tanggal->format('d M Y') }}</td>
+                            <td class="px-5 py-3 font-mono text-sm font-medium text-slate-900"><?php echo e($r->equipment_tag); ?></td>
+                            <td class="px-5 py-3 text-slate-600"><?php echo e($r->pt_location); ?></td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold"><?php echo e($r->ndev_motor); ?></td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold"><?php echo e($r->ndev_pompa); ?></td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-700"><?php echo e($r->temp_de_motor); ?>°C</td>
+                            <td class="px-5 py-3 text-slate-500"><?php echo e($r->tanggal->format('d M Y')); ?></td>
                             <td class="px-5 py-3">
                                 <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                                     <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
@@ -149,20 +142,20 @@
                                 </span>
                             </td>
                         </tr>
-                    @empty
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
                         <tr>
                             <td colspan="7" class="px-5 py-8 text-center text-slate-400 text-sm">
                                 Tidak ada data vibrasi danger.
                             </td>
                         </tr>
-                    @endforelse
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
     </div>
-@endsection
+<?php $__env->stopSection(); ?>
 
-{{-- Import Modal --}}
+
 <div id="importModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/30">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -186,7 +179,7 @@
                 </p>
             </div>
             <form id="importForm">
-                <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="_token" value="<?php echo e(csrf_token()); ?>">
                 <div class="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:border-teal-400 transition-colors cursor-pointer" id="dropZone">
                     <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
@@ -221,7 +214,7 @@
     </div>
 </div>
 
-@push('scripts')
+<?php $__env->startPush('scripts'); ?>
 <script>
 var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
 var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
@@ -319,7 +312,7 @@ function uploadImport() {
     document.getElementById('importResult').classList.add('hidden');
     document.getElementById('progressText').textContent = 'Mengupload file...';
 
-    fetch('{{ route("cm.import.upload") }}', {
+    fetch('<?php echo e(route("cm.import.upload")); ?>', {
         method: 'POST',
         body: formData,
         headers: {
@@ -346,7 +339,7 @@ function uploadImport() {
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(function() {
-        fetch('{{ route("cm.import.status", ["id" => "__ID__"]) }}'.replace('__ID__', importLogId))
+        fetch('<?php echo e(route("cm.import.status", ["id" => "__ID__"])); ?>'.replace('__ID__', importLogId))
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.status === 'completed' || data.status === 'failed') {
@@ -441,7 +434,7 @@ function loadChartData() {
     });
 
     var queryString = params.toString();
-    var url = '{{ route("cm.trend-chart-data") }}' + (queryString ? '?' + queryString : '');
+    var url = '<?php echo e(route("cm.trend-chart-data")); ?>' + (queryString ? '?' + queryString : '');
 
     window.history.replaceState({}, '', window.location.pathname + (queryString ? '?' + queryString : ''));
 
@@ -459,7 +452,7 @@ function loadChartData() {
 }
 
 function loadSummaryCards(queryString) {
-    var url = '{{ route("cm.overview-summary") }}' + (queryString ? '?' + queryString : '');
+    var url = '<?php echo e(route("cm.overview-summary")); ?>' + (queryString ? '?' + queryString : '');
     return fetch(url)
         .then(function(r) { return r.text(); })
         .then(function(html) {
@@ -471,7 +464,7 @@ function loadDonutData(queryString) {
     var canvas = document.getElementById('donutChart');
     if (!canvas) return Promise.resolve();
 
-    var url = '{{ route("cm.donut-data") }}' + (queryString ? '?' + queryString : '');
+    var url = '<?php echo e(route("cm.donut-data")); ?>' + (queryString ? '?' + queryString : '');
     return fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -663,4 +656,6 @@ function renderTrendChart(data) {
     });
 }
 </script>
-@endpush
+<?php $__env->stopPush(); ?>
+
+<?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\ASUS\oleochemicalReport\resources\views/cm/overview.blade.php ENDPATH**/ ?>

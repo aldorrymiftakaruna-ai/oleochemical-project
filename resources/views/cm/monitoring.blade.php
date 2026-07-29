@@ -30,7 +30,10 @@
                                 <ul class="space-y-1">
                                     @foreach($items->take(5) as $eq)
                                         <li class="text-xs text-slate-600 flex justify-between">
-                                            <span class="font-mono">{{ $eq->equipment_tag }}</span>
+                                            <a href="{{ route('cm.equipment-show', $eq->equipment_tag) }}"
+                                               class="font-mono text-teal-600 hover:text-teal-800 hover:underline transition-colors">
+                                                {{ $eq->equipment_tag }}
+                                            </a>
                                             <span class="text-slate-400">{{ $eq->last_month_label }}</span>
                                         </li>
                                     @endforeach
@@ -101,8 +104,11 @@
                 <tbody class="divide-y divide-slate-50">
                     @forelse($equipments as $eq)
                         <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="px-4 py-3 font-mono text-sm font-medium text-slate-900 sticky left-0 bg-white">
-                                {{ $eq->equipment_tag }}
+                            <td class="px-4 py-3 font-mono text-sm font-medium sticky left-0 bg-white">
+                                <a href="{{ route('cm.equipment-show', $eq->equipment_tag) }}"
+                                   class="text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                    {{ $eq->equipment_tag }}
+                                </a>
                             </td>
                             <td class="px-4 py-3 text-xs text-slate-600">{{ $eq->pt_location }}</td>
                             @foreach(range(1, 12) as $b)
