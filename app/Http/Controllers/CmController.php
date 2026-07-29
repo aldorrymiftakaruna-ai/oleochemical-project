@@ -467,28 +467,33 @@ class CmController extends Controller
             'construct_year' => 'nullable|integer|min:1900|max:2099',
         ]);
 
-        \Illuminate\Support\Facades\Log::info('equipmentUpdate called', [
-            'tag' => $tag,
-            'tipe_lubrikasi' => $request->input('tipe_lubrikasi'),
-            'manufacturer' => $request->input('manufacturer'),
-            'model_number' => $request->input('model_number'),
-            'construct_year' => $request->input('construct_year'),
-        ]);
-
         $equipment = CmEquipment::where('equipment_tag', $tag)->firstOrFail();
-        $equipment->update($request->only(['tipe_lubrikasi']));
 
-        \Illuminate\Support\Facades\Log::info('equipmentUpdate after update', [
-            'tag' => $tag,
-            'tipe_lubrikasi_db' => $equipment->fresh()->tipe_lubrikasi,
-        ]);
-
-        // Update relasi Asset jika ada
-        if ($equipment->asset && ($request->filled('manufacturer') || $request->filled('model_number') || $request->filled('construct_year'))) {
-            $equipment->asset->update($request->only(['manufacturer', 'model_number', 'construct_year']));
+        $updateData = [];
+        if ($request->has('tipe_lubrikasi')) {
+            $updateData['tipe_lubrikasi'] = $request->input('tipe_lubrikasi');
         }
 
-        return redirect()->back()->with('success', 'Informasi spek berhasil diperbarui.');
+        if (!empty($updateData)) {
+            $equipment->update($updateData);
+        }
+
+        // Update relasi Asset jika ada
+        $assetUpdate = [];
+        if ($request->has('manufacturer')) {
+            $assetUpdate['manufacturer'] = $request->input('manufacturer');
+        }
+        if ($request->has('model_number')) {
+            $assetUpdate['model_number'] = $request->input('model_number');
+        }
+        if ($request->has('construct_year')) {
+            $assetUpdate['construct_year'] = $request->input('construct_year');
+        }
+        if ($equipment->asset && !empty($assetUpdate)) {
+            $equipment->asset->update($assetUpdate);
+        }
+
+        return redirect()->route('cm.equipment-show', $tag)->with('success', 'Informasi spek berhasil diperbarui.');
     }
 
     /**
