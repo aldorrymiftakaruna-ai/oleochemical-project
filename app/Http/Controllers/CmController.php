@@ -318,7 +318,14 @@ class CmController extends Controller
             'dea_motor'  => $r->dea_motor,
             'ndev_pompa' => $r->ndev_pompa,
             'ndeh_pompa' => $r->ndeh_pompa,
-            'ndea_pompa' => $r->ndea_pompa,
+            'ndea_pompa'    => $r->ndea_pompa,
+            'dev_pompa'     => $r->dev_pompa,
+            'deh_pompa'     => $r->deh_pompa,
+            'dea_pompa'     => $r->dea_pompa,
+            'temp_de_motor' => $r->temp_de_motor,
+            'temp_nde_motor'=> $r->temp_nde_motor,
+            'temp_de_pompa' => $r->temp_de_pompa,
+            'temp_nde_pompa'=> $r->temp_nde_pompa,
         ]);
 
         // Readings dengan pagination (10 per halaman) — tetap difilter
