@@ -129,7 +129,13 @@
                 <tbody class="divide-y divide-slate-50">
                     <?php $__empty_1 = true; $__currentLoopData = $topVibrasi; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $r): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                         <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="px-5 py-3 font-mono text-sm font-medium text-slate-900"><?php echo e($r->equipment_tag); ?></td>
+                            <td class="px-5 py-3">
+                                <a href="<?php echo e(route('cm.equipment-show', $r->equipment_tag)); ?>"
+                                   class="font-mono text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                    <?php echo e($r->equipment_tag); ?>
+
+                                </a>
+                            </td>
                             <td class="px-5 py-3 text-slate-600"><?php echo e($r->pt_location); ?></td>
                             <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold"><?php echo e($r->ndev_motor); ?></td>
                             <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold"><?php echo e($r->ndev_pompa); ?></td>

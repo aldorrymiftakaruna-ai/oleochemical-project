@@ -100,23 +100,33 @@ class CmController extends Controller
             ->orderBy('bulan')
             ->get();
 
-        // Top 10 vibrasi tertinggi
-        $topVibrasiQuery = CmReading::selectRaw('cm_readings.*, cm_equipment.equipment_tag, cm_equipment.pt_location')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
-            ->where('kondisi', 'danger');
+        // Top 10 vibrasi tertinggi — latest reading per equipment yg masih DANGER
+        // Subquery: ambil (cm_equipment_id, tanggal_max) per equipment
+        $latestSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as tanggal_max')
+            ->groupBy('cm_equipment_id');
+
+        if ($filterTahun) {
+            $latestSub->whereYear('tanggal', $filterTahun);
+        }
+        if ($filterBulan) {
+            $latestSub->whereMonth('tanggal', $filterBulan);
+        }
+
+        $topVibrasiQuery = CmReading::selectRaw('r.*, cm_equipment.equipment_tag, cm_equipment.pt_location')
+            ->from('cm_readings as r')
+            ->joinSub($latestSub, 'latest', function ($join) {
+                $join->on('r.cm_equipment_id', '=', 'latest.cm_equipment_id')
+                     ->on('r.tanggal', '=', 'latest.tanggal_max');
+            })
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'r.cm_equipment_id')
+            ->where('r.kondisi', 'danger');
 
         if ($filterPt) {
             $topVibrasiQuery->where('cm_equipment.pt_location', $filterPt);
         }
-        if ($filterTahun) {
-            $topVibrasiQuery->whereYear('cm_readings.tanggal', $filterTahun);
-        }
-        if ($filterBulan) {
-            $topVibrasiQuery->whereMonth('cm_readings.tanggal', $filterBulan);
-        }
 
         $topVibrasi = $topVibrasiQuery
-            ->orderByRaw('COALESCE(ndev_motor, 0) + COALESCE(ndev_pompa, 0) DESC')
+            ->orderByRaw('COALESCE(r.ndev_motor, 0) + COALESCE(r.ndev_pompa, 0) DESC')
             ->take(10)
             ->get();
 
