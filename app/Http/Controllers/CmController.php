@@ -467,8 +467,21 @@ class CmController extends Controller
             'construct_year' => 'nullable|integer|min:1900|max:2099',
         ]);
 
+        \Illuminate\Support\Facades\Log::info('equipmentUpdate called', [
+            'tag' => $tag,
+            'tipe_lubrikasi' => $request->input('tipe_lubrikasi'),
+            'manufacturer' => $request->input('manufacturer'),
+            'model_number' => $request->input('model_number'),
+            'construct_year' => $request->input('construct_year'),
+        ]);
+
         $equipment = CmEquipment::where('equipment_tag', $tag)->firstOrFail();
         $equipment->update($request->only(['tipe_lubrikasi']));
+
+        \Illuminate\Support\Facades\Log::info('equipmentUpdate after update', [
+            'tag' => $tag,
+            'tipe_lubrikasi_db' => $equipment->fresh()->tipe_lubrikasi,
+        ]);
 
         // Update relasi Asset jika ada
         if ($equipment->asset && ($request->filled('manufacturer') || $request->filled('model_number') || $request->filled('construct_year'))) {

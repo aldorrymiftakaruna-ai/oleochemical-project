@@ -82,7 +82,6 @@ Route::middleware('admin')->group(function () {
         Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
         Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
-        Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
         Route::get('/trend-chart-data', [CmController::class, 'trendChartData'])->name('trend-chart-data');
         Route::get('/donut-data', [CmController::class, 'donutData'])->name('donut-data');
