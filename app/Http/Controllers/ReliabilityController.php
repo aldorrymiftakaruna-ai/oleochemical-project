@@ -19,9 +19,9 @@ class ReliabilityController extends Controller
      */
     public function index(Request $request)
     {
-        $filterTahun = $request->get('tahun', now()->format('Y'));
-        $filterBulan = $request->get('bulan', '');
-        $filterPt    = $request->get('pt', '');
+        $filterTahun = (string) ($request->get('tahun', now()->format('Y')) ?? now()->format('Y'));
+        $filterBulan = (string) ($request->get('bulan', '') ?? '');
+        $filterPt    = (string) ($request->get('pt', '') ?? '');
 
         // Tentukan periode
         if ($filterBulan) {

@@ -112,7 +112,7 @@ class CmController extends Controller
             $latestSub->whereMonth('tanggal', $filterBulan);
         }
 
-        $topVibrasiQuery = CmReading::selectRaw('r.*, cm_equipment.equipment_tag, cm_equipment.pt_location')
+        $topVibrasiQuery = CmReading::selectRaw('r.*, cm_equipment.equipment_tag, cm_equipment.pt_location, GREATEST(COALESCE(r.ndev_motor,0), COALESCE(r.ndeh_motor,0), COALESCE(r.ndea_motor,0), COALESCE(r.dev_motor,0), COALESCE(r.deh_motor,0), COALESCE(r.dea_motor,0)) as max_motor, GREATEST(COALESCE(r.ndev_pompa,0), COALESCE(r.ndeh_pompa,0), COALESCE(r.ndea_pompa,0), COALESCE(r.dev_pompa,0), COALESCE(r.deh_pompa,0), COALESCE(r.dea_pompa,0)) as max_mesin, GREATEST(COALESCE(r.temp_de_motor,0), COALESCE(r.temp_nde_motor,0)) as max_temp_motor, GREATEST(COALESCE(r.temp_de_pompa,0), COALESCE(r.temp_nde_pompa,0)) as max_temp_mesin')
             ->from('cm_readings as r')
             ->joinSub($latestSub, 'latest', function ($join) {
                 $join->on('r.cm_equipment_id', '=', 'latest.cm_equipment_id')
@@ -126,7 +126,7 @@ class CmController extends Controller
         }
 
         $topVibrasi = $topVibrasiQuery
-            ->orderByRaw('COALESCE(r.ndev_motor, 0) + COALESCE(r.ndev_pompa, 0) DESC')
+            ->orderByRaw('GREATEST(max_motor, max_mesin) DESC')
             ->take(10)
             ->get();
 

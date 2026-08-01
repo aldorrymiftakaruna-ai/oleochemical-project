@@ -51,6 +51,7 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">#</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tgl Upload</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">File</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tipe</th>
                         <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
                         <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Total Baris</th>
                         <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Insert</th>
@@ -72,6 +73,17 @@
                             </td>
                             <td class="px-5 py-3 text-slate-900 font-medium text-sm max-w-[200px] truncate" title="{{ $log->nama_file }}">
                                 {{ $log->nama_file }}
+                            </td>
+                            <td class="px-5 py-3">
+                                @if ($log->tipe_import === 'cm_findings')
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                        Finding CM
+                                    </span>
+                                @else
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                        Data CM
+                                    </span>
+                                @endif
                             </td>
                             <td class="px-5 py-3 text-center">
                                 @php
@@ -127,7 +139,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="13" class="px-5 py-12 text-center">
+                            <td colspan="14" class="px-5 py-12 text-center">
                                 <svg class="w-12 h-12 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                 </svg>

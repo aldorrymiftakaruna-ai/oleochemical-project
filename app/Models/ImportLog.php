@@ -25,6 +25,7 @@ class ImportLog extends Model
         'detail_skipped',
         'created_reading_ids',
         'created_equipment_ids',
+        'created_finding_ids',
         'status',
         'uploaded_by',
         'completed_at',
@@ -46,6 +47,7 @@ class ImportLog extends Model
             'detail_skipped'         => 'json',
             'created_reading_ids'    => 'json',
             'created_equipment_ids'  => 'json',
+            'created_finding_ids'    => 'json',
             'completed_at'           => 'datetime',
         ];
     }

@@ -14,6 +14,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WorkOrderController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 // Login routes (no auth)
@@ -23,6 +24,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Telegram webhook (no auth, called by Telegram)
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->name('telegram.webhook');
+
+// DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)
+if (app()->environment('local')) {
+    Route::get('/debug-login', function () {
+        Auth::loginUsingId(1);
+        return redirect('/dashboard');
+    })->name('debug.login');
+}
 
 // Admin routes (with auth)
 Route::middleware('admin')->group(function () {

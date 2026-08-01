@@ -35,6 +35,11 @@ class ProcessCmExcelImport implements ShouldQueue
     protected int $uploadedBy;
 
     /**
+     * Instance ImportLog untuk update progress live.
+     */
+    protected ?ImportLog $log = null;
+
+    /**
      * Mapping nama kolom Excel ke kolom database untuk Sheet "Data AppSheet".
      */
     private array $readingMapping = [
@@ -91,10 +96,12 @@ class ProcessCmExcelImport implements ShouldQueue
 
     public function handle(): void
     {
+        set_time_limit(600);
         ini_set('memory_limit', '256M');
 
         $log = ImportLog::findOrFail($this->importLogId);
         $log->update(['status' => 'processing']);
+        $this->log = $log;
 
         $result = [
             'total_dibaca'           => 0,
@@ -104,13 +111,14 @@ class ProcessCmExcelImport implements ShouldQueue
             'update_existing'        => 0,
             'gagal'                  => 0,
             'unregistered'           => 0,
-            'total_skipped_duplikat'  => 0,
-            'total_skipped_kosong'    => 0,
+            'total_skipped_duplikat' => 0,
+            'total_skipped_kosong'   => 0,
             'unregistered_tags'      => [],
             'errors'                 => [],
             'skipped'                => [],
             'created_reading_ids'    => [],
             'created_equipment_ids'  => [],
+            'last_sync'              => 0,
         ];
 
         try {
@@ -137,7 +145,6 @@ class ProcessCmExcelImport implements ShouldQueue
             $this->processMonitoringBulananPhpSpreadsheet($result);
             gc_collect_cycles();
 
-            // Validasi balance: total_dibaca === total_diproses
             $balanceOk = ($result['total_dibaca'] === $result['total_diproses']);
             if (!$balanceOk) {
                 \Illuminate\Support\Facades\Log::warning('IMPORT BALANCE MISMATCH', [
@@ -198,7 +205,6 @@ class ProcessCmExcelImport implements ShouldQueue
             $equipmentTag = trim($row['Equipment Tag'] ?? $row['equipment_tag'] ?? '');
             $dateRaw      = $row['Date'] ?? $row['date'] ?? '';
 
-            // Skip: Equipment Tag kosong
             if (empty($equipmentTag)) {
                 $result['total_skipped_kosong']++;
                 $result['total_diproses']++;
@@ -211,7 +217,6 @@ class ProcessCmExcelImport implements ShouldQueue
                 continue;
             }
 
-            // Skip: Date kosong
             if (empty($dateRaw)) {
                 $result['total_skipped_kosong']++;
                 $result['total_diproses']++;
@@ -252,7 +257,6 @@ class ProcessCmExcelImport implements ShouldQueue
                 $result['created_equipment_ids'][] = $equipment->id;
             }
 
-            // Cek duplikat dalam file yang sama — pake static variable
             static $seenKeys = [];
             $dupKey = $equipmentTag . '|' . $tanggal;
             if (in_array($dupKey, $seenKeys)) {
@@ -299,26 +303,18 @@ class ProcessCmExcelImport implements ShouldQueue
                 $result['insert_baru']++;
             }
 
-            // Hitung max_vibration, max_temp, dan kondisi dari data vibrasi
             $this->computeStatusCondition($reading, $row);
 
             $result['total_diproses']++;
+            $this->syncProgress($result);
         }
 
-        // Reset static untuk panggilan berikutnya (sheet berbeda)
         $seenKeys = [];
         return $result;
     }
 
     /**
      * Proses sheet "Status CM".
-     * Karena data di sheet ini adalah formula yang merujuk ke "Data AppSheet",
-     * kita coba baca dulu. Jika masih string formula (diawali '='), skip baris
-     * karena nilai sudah dihitung otomatis di processDataAppSheet.
-     *
-     * @param  array  $rows
-     * @param  array  $result
-     * @return array
      */
     private function processStatusCm(array $rows, array $result): array
     {
@@ -338,11 +334,8 @@ class ProcessCmExcelImport implements ShouldQueue
             $equipmentTag = trim($row['Equipment Tag'] ?? '');
             $dateRaw      = $row['Date'] ?? '';
 
-            // Skip jika data masih formula (tidak bisa di-resolve)
             $rawStatus = trim((string)($row['Status Condition (ISO 10816-3)'] ?? ''));
             if (str_starts_with($rawStatus, '=')) {
-                // Data masih formula — skip, sudah diproses di processDataAppSheet
-                // Tetap hitung sebagai "proses" agar balance total_dibaca == total_diproses
                 $result['total_skipped_kosong']++;
                 $result['total_diproses']++;
                 $result['skipped'][] = [
@@ -400,7 +393,7 @@ class ProcessCmExcelImport implements ShouldQueue
                 continue;
             }
 
-            $kondisi     = $this->mapStatus($rawStatus);
+            $kondisi      = $this->mapStatus($rawStatus);
             $maxVibration = $this->parseNumeric($row['Max. Vibration'] ?? $row['max_vibration'] ?? null);
             $maxTemp      = $this->parseNumeric($row['Max. Temp'] ?? $row['max_temp'] ?? null);
             $analisa      = trim($row['Analysis'] ?? '');
@@ -460,6 +453,7 @@ class ProcessCmExcelImport implements ShouldQueue
             }
 
             $result['total_diproses']++;
+            $this->syncProgress($result);
         }
 
         return $result;
@@ -480,7 +474,7 @@ class ProcessCmExcelImport implements ShouldQueue
 
         $highestRow = $worksheet->getHighestRow();
         $highestCol = $worksheet->getHighestColumn();
-        $colIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestCol);
+        $colIndex = Coordinate::columnIndexFromString($highestCol);
 
         if ($highestRow < 3) {
             return;
@@ -569,6 +563,7 @@ class ProcessCmExcelImport implements ShouldQueue
             }
 
             $result['total_diproses']++;
+            $this->syncProgress($result);
         }
 
         $spreadsheet->disconnectWorksheets();
@@ -576,12 +571,38 @@ class ProcessCmExcelImport implements ShouldQueue
     }
 
     /**
+     * Update progress ke database secara berkala (max ~2x per detik).
+     */
+    private function syncProgress(array &$result): void
+    {
+        if (!$this->log) {
+            return;
+        }
+
+        $now = microtime(true);
+        $lastSync = $result['last_sync'] ?? 0;
+
+        if (($now - $lastSync) < 0.5) {
+            return;
+        }
+
+        $this->log->update([
+            'total_baris'            => $result['total_diproses'] ?? 0,
+            'total_dibaca'           => $result['total_dibaca'] ?? 0,
+            'insert_baru'            => $result['insert_baru'],
+            'update_existing'        => $result['update_existing'],
+            'gagal'                  => $result['gagal'],
+            'unregistered'           => $result['unregistered'],
+            'total_skipped_duplikat' => $result['total_skipped_duplikat'],
+            'total_skipped_kosong'   => $result['total_skipped_kosong'],
+            'status'                 => 'processing',
+        ]);
+
+        $result['last_sync'] = $now;
+    }
+
+    /**
      * Cari equipment berdasarkan tag, buat baru jika belum ada.
-     *
-     * @param  array  $row  Data baris Excel (keys sudah di-trim)
-     * @param  string  $equipmentTag
-     * @param  array  $result
-     * @return CmEquipment|null
      */
     private function findOrCreateEquipment(array $row, string $equipmentTag, array &$result): ?CmEquipment
     {
@@ -590,13 +611,11 @@ class ProcessCmExcelImport implements ShouldQueue
             return $equipment;
         }
 
-        // Equipment belum terdaftar — catat sebagai unregistered
         if (!in_array($equipmentTag, $result['unregistered_tags'])) {
             $result['unregistered_tags'][] = $equipmentTag;
         }
         $result['unregistered']++;
 
-        // Tetap buat equipment baru berdasarkan data dari Excel
         $ptLocation = trim($row['PT Location'] ?? $row['pt_location'] ?? '');
         $plant      = trim($row['Plant'] ?? $row['plant'] ?? '');
         $tipeLubrikasi = trim($row['Tipe Lubrikasi'] ?? $row['tipe_lubrikasi'] ?? '');
@@ -613,24 +632,16 @@ class ProcessCmExcelImport implements ShouldQueue
         }
     }
 
-    /**
-     * Parse tanggal dari berbagai format.
-     *
-     * @param  mixed  $value
-     * @return string|null  Format Y-m-d
-     */
     private function parseDate(mixed $value): ?string
     {
         if (empty($value)) {
             return null;
         }
 
-        // Jika sudah berupa object DateTime
         if ($value instanceof \DateTime || $value instanceof \DateTimeImmutable) {
             return $value->format('Y-m-d');
         }
 
-        // Jika numeric (serial Excel date)
         if (is_numeric($value)) {
             try {
                 return Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((int) $value))
@@ -640,7 +651,6 @@ class ProcessCmExcelImport implements ShouldQueue
             }
         }
 
-        // Coba parse string tanggal
         try {
             return Carbon::parse($value)->format('Y-m-d');
         } catch (\Exception) {
@@ -648,12 +658,6 @@ class ProcessCmExcelImport implements ShouldQueue
         }
     }
 
-    /**
-     * Parse nilai numerik dari string atau angka.
-     *
-     * @param  mixed  $value
-     * @return float|null
-     */
     private function parseNumeric(mixed $value): ?float
     {
         if ($value === null || $value === '' || $value === '-') {
@@ -662,7 +666,6 @@ class ProcessCmExcelImport implements ShouldQueue
         if (is_numeric($value)) {
             return (float) $value;
         }
-        // Bersihkan karakter non-numerik (kecuali . dan -)
         $cleaned = preg_replace('/[^0-9.\-]/', '', (string) $value);
         if (is_numeric($cleaned)) {
             return (float) $cleaned;
@@ -670,28 +673,14 @@ class ProcessCmExcelImport implements ShouldQueue
         return null;
     }
 
-    /**
-     * Map status dari Excel ke value database.
-     *
-     * @param  string  $value
-     * @return string|null
-     */
     private function mapStatus(string $value): ?string
     {
         $upper = strtoupper(trim($value));
         return $this->statusMapping[$upper] ?? null;
     }
 
-    /**
-     * Hitung max_vibration, max_temp, dan kondisi dari data vibrasi row.
-     * Logic ini persis dengan formula asli di sheet "Status CM".
-     *
-     * @param  CmReading  $reading  Reading yang sudah di-save ke DB
-     * @param  array      $row      Data baris dari Excel (key sudah di-trim)
-     */
     private function computeStatusCondition(CmReading $reading, array $row): void
     {
-        // Kumpulkan semua nilai vibrasi dari motor + pompa + screw
         $vibrationFields = ['ndev_motor', 'ndeh_motor', 'ndea_motor',
                             'dev_motor', 'deh_motor', 'dea_motor',
                             'dev_pompa', 'deh_pompa', 'dea_pompa',
@@ -706,12 +695,9 @@ class ProcessCmExcelImport implements ShouldQueue
         $allVibrations = [];
         $allTemps = [];
 
-        // Mapping dari nama kolom database ke nama kolom Excel
-        // Gunakan readingMapping untuk lookup terbalik
         $excelToDb = $this->readingMapping;
 
         foreach ($vibrationFields as $dbField) {
-            // Cari nilai dari row Excel dulu (baru diinsert, belum ada di DB)
             $excelCol = array_search($dbField, $excelToDb);
             if ($excelCol !== false && isset($row[$excelCol])) {
                 $val = $this->parseNumeric($row[$excelCol]);
@@ -738,7 +724,6 @@ class ProcessCmExcelImport implements ShouldQueue
         $maxVibration = !empty($allVibrations) ? max($allVibrations) : null;
         $maxTemp      = !empty($allTemps) ? max($allTemps) : null;
 
-        // Cek visual bad dari kolom mech_seal, noise, coupling, safety
         $adaVisualBad = false;
         foreach (['mech_seal', 'noise', 'coupling', 'safety'] as $field) {
             $excelCol = array_search($field, $excelToDb);
@@ -754,11 +739,6 @@ class ProcessCmExcelImport implements ShouldQueue
             }
         }
 
-        // Tentukan kondisi — urutan prioritas persis dengan formula Excel asli:
-        // 1. VISUAL BAD jika ada visual bad
-        // 2. DANGER jika max_vibration > 7.1
-        // 3. ALARM jika max_vibration >= 4.5
-        // 4. GOOD default
         $kondisi = 'good';
         if ($adaVisualBad) {
             $kondisi = 'visual_bad';
@@ -776,7 +756,6 @@ class ProcessCmExcelImport implements ShouldQueue
             $updateData['max_temp'] = round($maxTemp, 2);
         }
 
-        // Hanya update jika ada perubahan
         $reading->update($updateData);
     }
 }

@@ -92,14 +92,28 @@ ulang.
 3. Satu file, satu bagian besar per panggilan tool. Pecah jadi beberapa
    panggilan berurutan untuk file besar (>250-300 baris), laporkan hasil
    tiap panggilan sebelum lanjut.
-4. Baca ulang file dari disk SEBELUM find_and_replace, jangan andalkan isi
-   yang dibaca di awal sesi atau giliran sebelumnya.
+4. Baca ulang file dari disk LANGSUNG SEBELUM melakukan perubahan apapun
+   pada file itu — baik `find_and_replace` MAUPUN overwrite penuh, tidak
+   terkecuali. Ini termasuk file yang "baru saja" ditulis di giliran atau
+   panggilan tool sebelumnya dalam sesi yang sama — JANGAN andalkan isi
+   file yang diingat dari konteks/percakapan, karena isi di disk bisa
+   sudah berubah (oleh proses lain, oleh revert, atau oleh panggilan tool
+   sebelumnya yang gagal sebagian).
 5. Jika tool edit GAGAL, STOP — jangan coba lagi dengan variasi teks
    berkali-kali, dan JANGAN eskalasi ke PowerShell. Laporkan: nama file,
    potongan teks yang dicari, dugaan penyebab gagal. Tunggu instruksi
    lanjutan — opsi teraman adalah manusia menulis manual langsung di editor.
-6. File `.blade.php`: DEFAULT overwrite penuh, hindari find_and_replace
-   parsial kecuali perubahan 1 baris tunggal yang unik.
+6. File `.blade.php`: WAJIB overwrite penuh sebagai DEFAULT MUTLAK, BUKAN
+   sekadar anjuran. `find_and_replace` parsial HANYA boleh untuk perubahan
+   1 baris tunggal yang benar-benar unik di seluruh file — di luar itu
+   DILARANG. **Trigger otomatis berhenti:** begitu SATU KALI panggilan
+   `find_and_replace` pada file `.blade.php` gagal (string tidak
+   ditemukan/tidak unik), itu adalah SINYAL WAJIB untuk langsung pindah ke
+   overwrite penuh pada percobaan berikutnya — JANGAN coba variasi target
+   pencarian lain, JANGAN coba replace bagian lain dulu dengan asumsi
+   filenya masih baik-baik saja. Satu kegagalan find_and_replace di file
+   blade = anggap file berpotensi sudah tidak sinkron dengan asumsi kamu;
+   baca ulang dari disk, lalu overwrite penuh.
 7. JANGAN PERNAH gunakan terminal/PowerShell/`php -r` untuk menulis isi
    file `.php` atau `.blade.php` — selalu pakai tool file bawaan (create
    file / edit file), atau tulis manual di editor kalau tool bermasalah.
@@ -112,6 +126,24 @@ ulang.
    pembuka/penutup (`<div>` vs `</div>`, `@foreach` vs `@endforeach`,
    `@push` vs `@endpush`, kurung kurawal `{` `}`) — jangan asumsikan
    berhasil hanya karena tidak ada error saat menulis.
+10. **Recovery via `git checkout`/`git reset` pada satu file** (mis. file
+    blade yang terbukti corrupt akibat find_and_replace gagal berulang):
+    boleh dipakai sebagai langkah darurat SEKALI untuk mengembalikan file
+    ke versi bersih terakhir yang ter-commit. Setelah checkout berhasil,
+    WAJIB:
+    - Baca ulang file itu dari disk untuk konfirmasi isinya memang bersih
+      (jangan asumsikan checkout otomatis berarti bersih dan sesuai
+      ekspektasi — verifikasi isi asli).
+    - SISA perubahan yang belum selesai pada file itu WAJIB dilanjutkan
+      dengan overwrite penuh, BUKAN kembali ke find_and_replace parsial —
+      karena find_and_replace parsial yang berulang adalah PENYEBAB file
+      itu corrupt di awal. Kembali ke metode yang sama akan mengulang
+      kegagalan yang sama.
+    - `git checkout HEAD -- <file>` mengembalikan ke commit TERAKHIR, bukan
+      ke commit tertentu di masa lalu. JANGAN checkout ke commit hash lama
+      dari Riwayat Insiden manapun di bawah — hash-hash itu catatan sejarah
+      untuk kejadian saat itu saja, BUKAN prosedur baku untuk diulang (lihat
+      catatan di Riwayat Insiden #3).
 
 ## RIWAYAT INSIDEN (pelajaran, jangan diulang)
 
@@ -133,6 +165,12 @@ ulang.
    dan `@push('scripts')` terduplikasi tidak rapi. Solusi: `git checkout`
    ke commit bersih terakhir (`69f216d`), lalu tambahkan fitur baru sebagai
    SATU KALI overwrite penuh, bukan tambal berkali-kali.
+   **Catatan: hash commit `69f216d` di atas adalah snapshot SEJARAH untuk
+   insiden itu SAJA, BUKAN instruksi baku yang harus diulang. JANGAN pernah
+   `git checkout` ke hash lama ini lagi di sesi mana pun — kalau ada file
+   corrupt baru, gunakan `git checkout HEAD -- <file>` (commit terakhir,
+   bukan hash lama ini) atau overwrite penuh file yang corrupt saja,
+   JANGAN revert seluruh repo ke titik waktu lama.**
 
 4. Penulisan file Blade besar lewat PowerShell double-quote here-string
    (`@" ... "@`) menyebabkan SEMUA `$variable` dan `{{ $x }}` ter-strip
@@ -196,6 +234,24 @@ ulang.
    dengan banyak `<div>`, WAJIB hitung manual jumlah tag buka vs tutup
    sebelum menganggap selesai.**
 
+10. **Pelanggaran sadar terhadap aturan yang sudah jelas** — pada
+    `overview.blade.php`, sudah tahu aturan "blade default overwrite
+    penuh" (poin 6 di atas), tapi tetap memilih bolak-balik
+    `find_and_replace` parsial (mengubah "Temp Motor" jadi "Temp Motor +
+    Temp Mesin") karena dianggap "lebih cepat". Hasilnya: karakter escape
+    literal (`\"`, `\\\"`) berceceran di file, file corrupt. Recovery
+    dilakukan dengan `git checkout HEAD -- resources/views/cm/overview.blade.php`
+    (commit terakhir, bukan hash lama), lalu berhasil 3 replace pendek,
+    tapi replace ke-4 gagal lagi (string tidak ditemukan) — tanda file
+    sudah tidak sinkron dengan asumsi, seharusnya saat itu juga langsung
+    pindah ke overwrite penuh, bukan lanjut mencoba replace lain.
+    **Pelajaran: mengetahui aturan tidak cukup — begitu satu
+    find_and_replace di file blade gagal, itu HARUS langsung jadi trigger
+    pindah ke overwrite penuh untuk SISA perubahan di file itu, bukan
+    alasan untuk mencoba variasi replace lain dulu. "Lebih cepat" secara
+    subjektif justru menghasilkan lebih banyak putaran gagal dan waktu
+    yang hilang. Lihat Aturan Wajib Edit File poin 6 dan 10.**
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE
@@ -227,6 +283,12 @@ ulang.
    output test, angka yang bisa diverifikasi), bukan asumsi. Kalau tidak
    bisa verifikasi sendiri (misal tidak bisa login/akses browser), katakan
    itu secara eksplisit, jangan simpulkan "seharusnya sudah benar".
+7. Commit progress ke git setelah satu fitur/perbaikan terverifikasi jalan
+   dan STABIL, SEBELUM mulai perubahan berikutnya yang tidak terkait.
+   Jangan menumpuk banyak perubahan berbeda tanpa commit di antaranya —
+   kalau nanti terjadi corrupt dan perlu `git checkout`, kerugian yang
+   hilang hanya sebatas perubahan sejak commit terakhir, bukan seluruh
+   sesi kerja.
 
 ## ATURAN WAJIB: VERIFIKASI DULU, BARU KODING
 

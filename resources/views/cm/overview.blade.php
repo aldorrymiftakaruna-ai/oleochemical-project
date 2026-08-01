@@ -113,7 +113,7 @@
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 class="font-medium text-slate-900">Top 10 Vibrasi Tertinggi (Danger)</h3>
-            <span class="text-xs text-slate-400">Berdasarkan nilai NDEV motor + pompa</span>
+            <span class="text-xs text-slate-400">Berdasarkan nilai vibrasi tertinggi</span>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -121,9 +121,10 @@
                     <tr class="bg-slate-50 border-b border-slate-100">
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Equipment Tag</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">PT</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">NDEV Motor</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">NDEV Pompa</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Motor</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Mesin</th>
                         <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Temp Motor</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Temp Mesin</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tanggal</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
                     </tr>
@@ -138,9 +139,10 @@
                                 </a>
                             </td>
                             <td class="px-5 py-3 text-slate-600">{{ $r->pt_location }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_motor }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_pompa }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->temp_de_motor }}°C</td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->max_motor }}</td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->max_mesin }}</td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->max_temp_motor }}°C</td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->max_temp_mesin }}°C</td>
                             <td class="px-5 py-3 text-slate-500">{{ $r->tanggal->format('d M Y') }}</td>
                             <td class="px-5 py-3">
                                 <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
@@ -151,7 +153,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-5 py-8 text-center text-slate-400 text-sm">
+                            <td colspan="8" class="px-5 py-8 text-center text-slate-400 text-sm">
                                 Tidak ada data vibrasi danger.
                             </td>
                         </tr>
@@ -162,6 +164,7 @@
     </div>
 @endsection
 
+@push('modals')
 {{-- Import Modal --}}
 <div id="importModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/30">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
@@ -174,19 +177,19 @@
             </button>
         </div>
         <div class="px-6 py-5">
-            <div class="mb-4">
+            <div id="dropZoneContainer" class="mb-4">
                 <p class="text-sm text-slate-600 mb-2">
-                    Format file harus sesuai template — 5 sheet:
-                    <strong>Data AppSheet</strong>, <strong>Status CM</strong>,
-                    <strong>Master Equipment</strong>, <strong>Monitoring Bulanan</strong>,
-                    <strong>Tabel Mon. Bulanan</strong>.
+                    Upload file Excel CM. Dua jenis file didukung:
                 </p>
+                <ul class="text-xs text-slate-500 space-y-1 mb-2 list-disc list-inside">
+                    <li><strong>Data_CM.xlsx</strong> — berisi sheet <strong>Data AppSheet</strong> & <strong>Status CM</strong> (data readings/monitoring)</li>
+                    <li><strong>Finding_CM.xlsx</strong> — berisi sheet <strong>Finding CM</strong> (data finding)</li>
+                </ul>
                 <p class="text-xs text-slate-400">
-                    File .xlsx, maksimal 10MB. Data akan diproses di latar belakang.
+                    File .xlsx, maksimal 10MB. Jenis file dideteksi otomatis. Data akan diproses di latar belakang.
                 </p>
-            </div>
-            <form id="importForm">
-                <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                <form id="importForm">
+                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
                 <div class="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:border-teal-400 transition-colors cursor-pointer" id="dropZone">
                     <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
@@ -196,20 +199,21 @@
                     </p>
                     <p class="text-xs text-slate-400" id="fileNameDisplay">Belum ada file dipilih</p>
                     <input type="file" id="fileInput" name="file" accept=".xlsx" class="hidden">
-                </div>
-                <div id="uploadProgress" class="hidden mt-4">
-                    <div class="flex items-center gap-3">
-                        <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                        </svg>
-                        <span class="text-sm text-slate-700" id="progressText">Memproses file...</span>
                     </div>
+                </form>
+            </div>
+            <div id="uploadProgress" class="hidden mt-4">
+                <div class="flex items-center gap-3">
+                    <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    <span class="text-sm text-slate-700" id="progressText">Memproses file...</span>
                 </div>
-                <div id="importResult" class="hidden mt-4 p-4 rounded-lg border text-sm"></div>
-            </form>
+            </div>
+            <div id="importResult" class="hidden mt-4 p-4 rounded-lg border text-sm"></div>
         </div>
-        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+        <div id="importFormFooter" class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
             <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                 Batal
             </button>
@@ -220,6 +224,7 @@
         </div>
     </div>
 </div>
+@endpush
 
 @push('scripts')
 <script>
@@ -274,9 +279,11 @@ function openImportModal() {
     document.getElementById('importModal').classList.remove('hidden');
     document.getElementById('importResult').classList.add('hidden');
     document.getElementById('uploadProgress').classList.add('hidden');
+    document.getElementById('dropZoneContainer').style.display = '';
     document.getElementById('fileInput').value = '';
     document.getElementById('fileNameDisplay').textContent = 'Belum ada file dipilih';
     document.getElementById('uploadBtn').disabled = true;
+    document.getElementById('importFormFooter').classList.remove('hidden');
 }
 
 function closeImportModal() {
@@ -315,6 +322,8 @@ function uploadImport() {
     formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
 
     document.getElementById('uploadProgress').classList.remove('hidden');
+    document.getElementById('importFormFooter').classList.add('hidden');
+    document.getElementById('dropZoneContainer').style.display = 'none';
     document.getElementById('uploadBtn').disabled = true;
     document.getElementById('importResult').classList.add('hidden');
     document.getElementById('progressText').textContent = 'Mengupload file...';
@@ -323,30 +332,60 @@ function uploadImport() {
         method: 'POST',
         body: formData,
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
         }
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+        var contentType = r.headers.get('Content-Type') || '';
+        return r.text().then(function(text) {
+            if (contentType.indexOf('application/json') !== -1) {
+                try {
+                    return {ok: r.ok, json: JSON.parse(text)};
+                } catch (e) {
+                    return {ok: false, json: {message: text}};
+                }
+            }
+            // Response bukan JSON — coba ambil pesan error dari halaman HTML
+            var pesan = 'Terjadi kesalahan pada server.';
+            if (r.status === 419) {
+                pesan = 'Sesi login telah berakhir. Silakan muat ulang halaman (F5) dan coba lagi.';
+            } else if (r.status === 413) {
+                pesan = 'File terlalu besar. Pastikan ukuran file di bawah 10MB dan tidak melebihi batas upload server.';
+            } else if (r.status === 422) {
+                pesan = 'File tidak valid. Pastikan format .xlsx dan sesuai ketentuan.';
+            }
+            return {ok: false, json: {message: pesan}};
+        });
+    })
     .then(function(resp) {
-        if (resp.success) {
+        if (resp.json && resp.json.success) {
             document.getElementById('progressText').textContent = 'Upload selesai, memproses data...';
-            importLogId = resp.import_log_id;
+            importLogId = resp.json.import_log_id;
             startPolling();
         } else {
-            showImportResult('error', resp.message || 'Gagal mengupload file.');
+            showImportResult('error', (resp.json && resp.json.message) || 'Gagal mengupload file.');
             document.getElementById('uploadProgress').classList.add('hidden');
+            document.getElementById('importFormFooter').classList.remove('hidden');
+            document.getElementById('dropZoneContainer').style.display = '';
         }
     })
     .catch(function(err) {
         showImportResult('error', 'Terjadi kesalahan saat mengupload: ' + err.message);
         document.getElementById('uploadProgress').classList.add('hidden');
+        document.getElementById('importFormFooter').classList.remove('hidden');
+        document.getElementById('dropZoneContainer').style.display = '';
     });
 }
 
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(function() {
-        fetch('{{ route("cm.import.status", ["id" => "__ID__"]) }}'.replace('__ID__', importLogId))
+        fetch('{{ route("cm.import.status", ["id" => "__ID__"]) }}'.replace('__ID__', importLogId), {
+            headers: {
+                'Accept': 'application/json'
+            }
+        })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.status === 'completed' || data.status === 'failed') {
@@ -359,7 +398,14 @@ function startPolling() {
                         loadChartData();
                     }
                 } else {
-                    document.getElementById('progressText').textContent = 'Memproses data... (' + (data.insert_baru + data.update_existing) + ' baris diproses)';
+                    var processed = data.total_baris || 0;
+                    var totalRead = data.total_dibaca || 0;
+                    var progressMsg = 'Memproses data... (' + processed.toLocaleString('id-ID') + ' baris diproses';
+                    if (totalRead > processed) {
+                        progressMsg += ' dari ±' + totalRead.toLocaleString('id-ID');
+                    }
+                    progressMsg += ')';
+                    document.getElementById('progressText').textContent = progressMsg;
                 }
             });
     }, 2000);

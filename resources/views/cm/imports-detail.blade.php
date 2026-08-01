@@ -139,6 +139,71 @@
         </div>
     @endif
 
+    {{-- Finding Baru yang Terdaftar --}}
+    @if ($newFindings->isNotEmpty())
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+            <div class="px-5 py-4 border-b border-slate-100">
+                <h3 class="font-medium text-slate-900">Finding Baru dari Import Ini</h3>
+                <p class="text-xs text-slate-400 mt-0.5">{{ $newFindings->count() }} finding baru</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100">
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Kode Finding</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Equipment</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Kategori</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tanggal Temuan</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Severity</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        @foreach ($newFindings as $f)
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-5 py-3">
+                                    <a href="{{ route('cm.findings.show', $f->kode_finding) }}"
+                                       class="font-mono text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                        {{ $f->kode_finding }}
+                                    </a>
+                                </td>
+                                <td class="px-5 py-3">
+                                    <a href="{{ route('cm.equipment-show', $f->equipment?->equipment_tag) }}"
+                                       class="font-mono text-sm text-slate-600 hover:text-teal-700 hover:underline transition-colors">
+                                        {{ $f->equipment?->equipment_tag ?? '-' }}
+                                    </a>
+                                </td>
+                                <td class="px-5 py-3 text-slate-600">{{ $f->kategori }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ $f->tanggal_temuan?->format('d M Y') ?? '-' }}</td>
+                                <td class="px-5 py-3">
+                                    @php
+                                        $sevClass = match ($f->severity) {
+                                            'high'   => 'bg-red-100 text-red-700',
+                                            'medium' => 'bg-amber-100 text-amber-700',
+                                            'low'    => 'bg-green-100 text-green-700',
+                                            default  => 'bg-slate-100 text-slate-600',
+                                        };
+                                    @endphp
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize {{ $sevClass }}">
+                                        {{ $f->severity }}
+                                    </span>
+                                </td>
+                                <td class="px-5 py-3">
+                                    @php
+                                        $statusClass = $f->status === 'closed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                                    @endphp
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize {{ $statusClass }}">
+                                        {{ $f->status }}
+                                    </span>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
     {{-- Detail Error & Skip --}}
     @if ($detailItems->isNotEmpty())
         <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">

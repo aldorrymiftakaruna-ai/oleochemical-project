@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessCmExcelImport;
+use App\Jobs\ProcessCmFindingsImport;
 use App\Models\ImportLog;
 use App\Models\CmReading;
 use App\Models\CmEquipment;
+use App\Models\CmFinding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -19,6 +21,8 @@ class CmImportController extends Controller
 
     public function uploadImport(Request $request)
     {
+        set_time_limit(600); // Maks 10 menit untuk upload + proses file besar
+
         $request->validate([
             'file' => 'required|file|mimes:xlsx|max:10240',
         ]);
@@ -31,7 +35,9 @@ class CmImportController extends Controller
 
         $fullPath = Storage::path($filePath);
 
-        $requiredSheets = ['Data AppSheet', 'Status CM'];
+        $requiredSheetsReadings = ['Data AppSheet', 'Status CM'];
+        $requiredSheetFindings  = ['Finding CM'];
+
         $zip = new \ZipArchive();
         if ($zip->open($fullPath) === true) {
             $workbookXml = $zip->getFromName('xl/workbook.xml');
@@ -47,8 +53,32 @@ class CmImportController extends Controller
                     $foundSheets[] = (string) $attrs['name'];
                 }
 
+                if (count(array_intersect($requiredSheetFindings, $foundSheets)) === count($requiredSheetFindings)) {
+                    // File Finding_CM.xlsx
+                    $importLog = ImportLog::create([
+                        'nama_file'   => $file->getClientOriginalName(),
+                        'tipe_import' => 'cm_findings',
+                        'total_baris' => 0,
+                        'insert_baru' => 0,
+                        'update_existing' => 0,
+                        'gagal'       => 0,
+                        'unregistered' => 0,
+                        'status'      => 'processing',
+                        'uploaded_by' => auth()->id(),
+                    ]);
+
+                    ProcessCmFindingsImport::dispatch($fullPath, $importLog->id, auth()->id());
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'File Finding CM berhasil diupload dan sedang diproses di latar belakang.',
+                        'import_log_id' => $importLog->id,
+                    ]);
+                }
+
+                // Cek sheet untuk file Data_CM.xlsx
                 $missingSheets = [];
-                foreach ($requiredSheets as $required) {
+                foreach ($requiredSheetsReadings as $required) {
                     if (!in_array($required, $foundSheets)) {
                         $missingSheets[] = $required;
                     }
@@ -58,7 +88,8 @@ class CmImportController extends Controller
                     unlink($fullPath);
                     return response()->json([
                         'success' => false,
-                        'message' => 'Sheet ' . implode(', ', $missingSheets) . ' tidak ditemukan.',
+                        'message' => 'File tidak dikenali. Untuk Data CM harus ada sheet: ' . implode(', ', $missingSheets)
+                            . '. Untuk Finding CM harus ada sheet: Finding CM.',
                     ], 422);
                 }
             }
@@ -98,6 +129,7 @@ class CmImportController extends Controller
         return response()->json([
             'status'  => $log->status,
             'total_baris'    => $log->total_baris,
+            'total_dibaca'   => $log->total_dibaca ?? 0,
             'insert_baru'    => $log->insert_baru,
             'update_existing' => $log->update_existing,
             'gagal'          => $log->gagal,
@@ -113,7 +145,7 @@ class CmImportController extends Controller
     public function history(Request $request)
     {
         $query = ImportLog::with('uploader')
-            ->where('tipe_import', 'cm_excel')
+            ->whereIn('tipe_import', ['cm_excel', 'cm_findings'])
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('status')) {
@@ -139,13 +171,20 @@ class CmImportController extends Controller
 
     public function historyDetail(ImportLog $importLog)
     {
-        if ($importLog->tipe_import !== 'cm_excel') {
+        if (!in_array($importLog->tipe_import, ['cm_excel', 'cm_findings'])) {
             abort(404);
         }
 
         $newEquipments = collect();
         if (!empty($importLog->created_equipment_ids)) {
             $newEquipments = CmEquipment::whereIn('id', $importLog->created_equipment_ids)->get();
+        }
+
+        $newFindings = collect();
+        if (!empty($importLog->created_finding_ids)) {
+            $newFindings = CmFinding::with('equipment')
+                ->whereIn('id', $importLog->created_finding_ids)
+                ->get();
         }
 
         $detailItems = collect();
@@ -201,7 +240,7 @@ class CmImportController extends Controller
             ? ($importLog->total_dibaca === $totalBreakdown)
             : ($importLog->total_baris === $totalBreakdown);
 
-        return view('cm.imports-detail', compact('importLog', 'newEquipments', 'detailItems', 'balanceOk', 'totalBreakdown'));
+        return view('cm.imports-detail', compact('importLog', 'newEquipments', 'newFindings', 'detailItems', 'balanceOk', 'totalBreakdown'));
     }
 
     public function undoImport(ImportLog $importLog)
@@ -215,9 +254,14 @@ class CmImportController extends Controller
                 CmReading::whereIn('id', $importLog->created_reading_ids)->delete();
             }
 
+            if (!empty($importLog->created_finding_ids)) {
+                CmFinding::whereIn('id', $importLog->created_finding_ids)->delete();
+            }
+
             if (!empty($importLog->created_equipment_ids)) {
                 CmEquipment::whereIn('id', $importLog->created_equipment_ids)
                     ->whereDoesntHave('readings')
+                    ->whereDoesntHave('findings')
                     ->delete();
             }
 
