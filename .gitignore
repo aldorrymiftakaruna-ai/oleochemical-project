@@ -50,3 +50,6 @@ _debug_*.ps1
 _fetch_*.ps1
 _inject_*.php
 _read_*.ps1
+
+# Artefak Vite dev
+public/fonts-manifest.dev.json

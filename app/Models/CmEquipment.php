@@ -38,8 +38,11 @@ class CmEquipment extends Model
     /**
      * Relasi ke Asset (Asset Management).
      *
-     * Mencocokkan cm_equipment.equipment_tag dengan assets.tech_ident_no.
-     * Jika tidak ada yang cocok, fallback ke assets.equipment_no.
+     * Mencocokkan cm_equipment.equipment_tag dengan assets.tech_ident_no
+     * secara PERSIS (exact match). Tag berprefix "2-" (misal "2-6400P5")
+     * TIDAK disambungkan ke asset Line 1 ("6400P5") — keduanya equipment
+     * yang berbeda. Jika asset dengan tech_ident_no yang cocok ditambahkan
+     * di Asset Management nanti, relasi ini otomatis menemukannya.
      *
      * CATATAN: Relasi belongsTo hanya 1:1. Karena bisa ada beberapa asset
      * dengan tech_ident_no yang sama (misal pompa + motor), relasi ini

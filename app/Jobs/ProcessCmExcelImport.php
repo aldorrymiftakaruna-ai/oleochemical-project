@@ -11,8 +11,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use Rap2hpoutre\FastExcel\FastExcel;
 
 class ProcessCmExcelImport implements ShouldQueue
@@ -142,7 +140,7 @@ class ProcessCmExcelImport implements ShouldQueue
             unset($sheets2, $statusCmSheet, $fastExcel2);
             gc_collect_cycles();
 
-            $this->processMonitoringBulananPhpSpreadsheet($result);
+            $this->rebuildMonthlyTracking();
             gc_collect_cycles();
 
             $balanceOk = ($result['total_dibaca'] === $result['total_diproses']);
@@ -305,6 +303,13 @@ class ProcessCmExcelImport implements ShouldQueue
 
             $this->computeStatusCondition($reading, $row);
 
+            // Jika equipment tidak running (Status = Stop), alert vibrasi
+            // diwarisi dari pengambilan terakhir yang running, tanpa meng-copy
+            // nilai vibrasi bulan kemarin. Cukup tambahkan penanda pada remark.
+            if ($this->isStoppedStatus($statusVal)) {
+                $this->applyStopInheritance($reading);
+            }
+
             $result['total_diproses']++;
             $this->syncProgress($result);
         }
@@ -459,115 +464,91 @@ class ProcessCmExcelImport implements ShouldQueue
         return $result;
     }
 
-    private function processMonitoringBulananPhpSpreadsheet(array &$result): void
+    /**
+     * Rebuild status monitoring bulanan (Sudah/Belum) dari tabel cm_readings.
+     *
+     * Metode ini menggantikan pembacaan langsung sheet "Monitoring Bulanan"
+     * (yang berisi formula SUMPRODUCT tanpa cached value dan sering memicu
+     * kalkulasi array formula yang berat/timeout). Status dihitung murni dari
+     * data asli yang sudah tersimpan: jika sebuah equipment punya minimal
+     * satu reading pada bulan & tahun tertentu, maka track tersebut dianggap
+     * "sudah" diambil; jika belum ada reading sama sekali pada bulan itu,
+     * dianggap "belum". Bulan di masa depan tidak dibuatkan tracking.
+     *
+     * @return void
+     */
+    private function rebuildMonthlyTracking(): void
     {
-        $reader = IOFactory::createReaderForFile($this->filePath);
-        $reader->setReadDataOnly(true);
-        $reader->setLoadSheetsOnly(['Monitoring Bulanan']);
+        $tahunIni = (int) now()->year;
+        $bulanIni = (int) now()->format('n');
 
-        $spreadsheet = $reader->load($this->filePath);
-        $worksheet = $spreadsheet->getSheetByName('Monitoring Bulanan');
+        // Reporting monitoring dimulai Maret 2026, jadi untuk tahun 2026
+        // bulan Jan & Feb diabaikan. Untuk tahun lain mulai dari Januari.
+        $bulanMulai = ($tahunIni === 2026) ? 3 : 1;
 
-        if (!$worksheet) {
-            return;
-        }
+        // Hanya bulan yang sudah lewat/tiba waktunya yang dinilai.
+        // Bulan di masa depan tidak dibuatkan tracking agar tidak tampil
+        // sebagai "belum / outstanding" padahal waktunya belum tiba.
+        $bulanAktif = range($bulanMulai, $bulanIni);
 
-        $highestRow = $worksheet->getHighestRow();
-        $highestCol = $worksheet->getHighestColumn();
-        $colIndex = Coordinate::columnIndexFromString($highestCol);
+        // Bersihkan tracking bulan yang sudah tidak dinilai untuk tahun ini
+        // (mis. Jan & Feb 2026) supaya tidak menampilkan status yang menyesatkan.
+        CmMonthlyTracking::where('tahun', $tahunIni)
+            ->where('bulan', '<', $bulanMulai)
+            ->delete();
 
-        if ($highestRow < 3) {
-            return;
-        }
+        $equipments = CmEquipment::with('readings')->get();
 
-        $headers = [];
-        for ($col = 1; $col <= $colIndex; $col++) {
-            $cellValue = trim((string) $worksheet->getCell([$col, 3])->getValue());
-            if (empty($cellValue)) {
-                $cellValue = trim((string) $worksheet->getCell([$col, 2])->getValue());
-            }
-            $headers[$col] = $cellValue;
-        }
-
-        $bulanMap = [
-            'JAN' => 1, 'FEB' => 2, 'MAR' => 3, 'APR' => 4,
-            'MEI' => 5, 'JUN' => 6, 'JUL' => 7, 'AGU' => 8,
-            'SEP' => 9, 'OKT' => 10, 'NOV' => 11, 'DES' => 12,
-        ];
-
-        $bulanColumns = [];
-        $equipmentTagCol = null;
-
-        foreach ($headers as $col => $header) {
-            $upper = strtoupper(trim($header));
-            if (isset($bulanMap[$upper])) {
-                $bulanColumns[$col] = $bulanMap[$upper];
-            } elseif (in_array($upper, ['EQUIPMENT TAG', 'EQUIPMENT'])) {
-                $equipmentTagCol = $col;
-            }
-        }
-
-        for ($row = 4; $row <= $highestRow; $row++) {
-            $result['total_dibaca']++;
-
-            $equipmentTag = '';
-            if ($equipmentTagCol) {
-                $equipmentTag = trim((string) $worksheet->getCell([$equipmentTagCol, $row])->getValue());
-            }
-
-            if (empty($equipmentTag)) {
-                $result['total_skipped_kosong']++;
-                $result['total_diproses']++;
-                $result['skipped'][] = [
-                    'baris'    => $row,
-                    'sheet'    => 'Monitoring Bulanan',
-                    'kategori' => 'skip_kosong',
-                    'pesan'    => 'Equipment Tag kosong di baris ' . $row,
-                ];
-                continue;
-            }
-
-            $equipment = CmEquipment::where('equipment_tag', $equipmentTag)->first();
-            if (!$equipment) {
-                $result['total_diproses']++;
-                continue;
-            }
-
-            $tahun = (int) date('Y');
-
-            foreach ($bulanColumns as $col => $bulanAngka) {
-                $cellValue = trim((string) $worksheet->getCell([$col, $row])->getValue());
-                if (empty($cellValue)) {
+        foreach ($equipments as $equipment) {
+            $bulanSamples = [];
+            foreach ($equipment->readings as $reading) {
+                if (!$reading->tanggal) {
                     continue;
                 }
-
-                $statusDb = strtolower($cellValue) === 'sudah' ? 'sudah' : 'belum';
-
-                try {
-                    CmMonthlyTracking::updateOrCreate(
-                        [
-                            'cm_equipment_id' => $equipment->id,
-                            'tahun'           => $tahun,
-                            'bulan'           => $bulanAngka,
-                        ],
-                        ['status' => $statusDb]
-                    );
-                } catch (\Exception $e) {
-                    $result['gagal']++;
-                    $result['errors'][] = [
-                        'baris' => $row,
-                        'sheet' => 'Monitoring Bulanan',
-                        'pesan' => 'Gagal update tracking: ' . $e->getMessage(),
-                    ];
+                $thn = (int) $reading->tanggal->format('Y');
+                $bln = (int) $reading->tanggal->format('n');
+                if ($thn !== $tahunIni) {
+                    continue;
+                }
+                // Lacak per bulan: apakah ada reading yang running (Start)
+                // dan apakah ada reading sama sekali (untuk deteksi Stop).
+                if (!isset($bulanSamples[$bln])) {
+                    $bulanSamples[$bln] = ['hasStart' => false, 'hasReading' => false];
+                }
+                $bulanSamples[$bln]['hasReading'] = true;
+                $statusUpper = strtoupper(trim((string) $reading->status));
+                if (str_contains($statusUpper, 'START')) {
+                    $bulanSamples[$bln]['hasStart'] = true;
                 }
             }
 
-            $result['total_diproses']++;
-            $this->syncProgress($result);
-        }
+            foreach ($bulanAktif as $bulan) {
+                $sample = $bulanSamples[$bulan] ?? null;
 
-        $spreadsheet->disconnectWorksheets();
-        unset($spreadsheet);
+                if ($sample === null) {
+                    // Tidak ada data masuk sama sekali pada bulan itu.
+                    $status = 'belum';
+                } elseif ($sample['hasStart']) {
+                    // Ada pengambilan yang running (Start) pada bulan itu.
+                    $status = 'sudah';
+                } elseif ($sample['hasReading']) {
+                    // Ada data masuk pada bulan itu, tapi tidak ada yang running
+                    // (mis. semuanya Stop) -> equipment tidak running, dimaafkan.
+                    $status = 'free';
+                } else {
+                    $status = 'belum';
+                }
+
+                CmMonthlyTracking::updateOrCreate(
+                    [
+                        'cm_equipment_id' => $equipment->id,
+                        'tahun'           => $tahunIni,
+                        'bulan'           => $bulan,
+                    ],
+                    ['status' => $status]
+                );
+            }
+        }
     }
 
     /**
@@ -757,5 +738,49 @@ class ProcessCmExcelImport implements ShouldQueue
         }
 
         $reading->update($updateData);
+    }
+
+    /**
+     * Cek apakah status pada baris Excel mengindikasikan equipment tidak running.
+     * Nilai umum: "Stop", "Stopped", "NOT RUNNING", dst.
+     */
+    private function isStoppedStatus(mixed $status): bool
+    {
+        if ($status === null || $status === '') {
+            return false;
+        }
+        $upper = strtoupper(trim((string) $status));
+        // "Start - No Vib" bukan stop; "Stop" / "Stopped" / "Not Running" adalah stop.
+        return str_contains($upper, 'STOP') || str_contains($upper, 'NOT RUNNING');
+    }
+
+    /**
+     * Untuk reading dengan status Stop (equipment tidak running):
+     * alert (kondisi) diwarisi dari reading terakhir yang running (Start),
+     * namun nilai vibrasi/temperatur TIDAK di-copy dari bulan sebelumnya.
+     * Status Stop direpresentasikan lewat kolom status, bukan di remark.
+     */
+    private function applyStopInheritance(CmReading $reading): void
+    {
+        // Cari kondisi dari reading terakhir yang bukan Stop, sebelum/termasuk
+        // tanggal reading ini, untuk equipment yang sama.
+        $lastRunning = CmReading::where('cm_equipment_id', $reading->cm_equipment_id)
+            ->whereDate('tanggal', '<=', $reading->tanggal)
+            ->where(function ($q) {
+                $q->where('status', '!=', 'Stop')
+                    ->orWhereNull('status');
+            })
+            ->orderByDesc('tanggal')
+            ->first();
+
+        $updateData = [];
+
+        if ($lastRunning && $lastRunning->kondisi) {
+            $updateData['kondisi'] = $lastRunning->kondisi;
+        }
+
+        if (!empty($updateData)) {
+            $reading->update($updateData);
+        }
     }
 }

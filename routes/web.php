@@ -91,6 +91,9 @@ Route::middleware('admin')->group(function () {
         Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
         Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
+        Route::delete('/readings/{reading}', [CmController::class, 'readingDestroy'])->name('readings.destroy');
+        Route::delete('/findings/{finding}', [CmController::class, 'findingDestroy'])->name('findings.destroy');
+        Route::post('/sync-google-sheets', [CmController::class, 'syncGoogleSheets'])->name('sync-google-sheets');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
         Route::get('/trend-chart-data', [CmController::class, 'trendChartData'])->name('trend-chart-data');
         Route::get('/donut-data', [CmController::class, 'donutData'])->name('donut-data');
@@ -100,13 +103,6 @@ Route::middleware('admin')->group(function () {
         Route::get('/import', [CmImportController::class, 'showImport'])->name('import.show');
         Route::post('/import/upload', [CmImportController::class, 'uploadImport'])->name('import.upload');
         Route::get('/import/status/{id}', [CmImportController::class, 'checkStatus'])->name('import.status');
-
-        // Riwayat Import Excel
-        Route::prefix('imports')->name('imports.')->group(function () {
-            Route::get('/', [CmImportController::class, 'history'])->name('history');
-            Route::get('/{importLog}', [CmImportController::class, 'historyDetail'])->name('detail');
-            Route::post('/{importLog}/undo', [CmImportController::class, 'undoImport'])->name('undo');
-        });
 
         // Export
         Route::get('/export/readings', [CmController::class, 'exportReadings'])->name('export-readings');

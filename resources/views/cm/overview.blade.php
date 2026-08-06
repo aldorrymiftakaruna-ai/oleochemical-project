@@ -66,20 +66,13 @@
             <a href="{{ route('cm.overview') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                 Reset
             </a>
-            <button type="button" onclick="openImportModal()"
-                    class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
+            <button type="button" id="syncSheetsBtn" onclick="syncGoogleSheets()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
-                Import Excel
+                Sync Google Sheets
             </button>
-            <a href="{{ route('cm.export-readings', ['pt' => $filterPt, 'tahun' => $filterTahun, 'bulan' => $filterBulan, 'status' => $filterStatus]) }}"
-               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Export Excel
-            </a>
         </form>
     </div>
 
@@ -164,76 +157,11 @@
     </div>
 @endsection
 
-@push('modals')
-{{-- Import Modal --}}
-<div id="importModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/30">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-slate-900">Import Excel CM</h3>
-            <button type="button" onclick="closeImportModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
-        </div>
-        <div class="px-6 py-5">
-            <div id="dropZoneContainer" class="mb-4">
-                <p class="text-sm text-slate-600 mb-2">
-                    Upload file Excel CM. Dua jenis file didukung:
-                </p>
-                <ul class="text-xs text-slate-500 space-y-1 mb-2 list-disc list-inside">
-                    <li><strong>Data_CM.xlsx</strong> — berisi sheet <strong>Data AppSheet</strong> & <strong>Status CM</strong> (data readings/monitoring)</li>
-                    <li><strong>Finding_CM.xlsx</strong> — berisi sheet <strong>Finding CM</strong> (data finding)</li>
-                </ul>
-                <p class="text-xs text-slate-400">
-                    File .xlsx, maksimal 10MB. Jenis file dideteksi otomatis. Data akan diproses di latar belakang.
-                </p>
-                <form id="importForm">
-                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                <div class="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:border-teal-400 transition-colors cursor-pointer" id="dropZone">
-                    <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                    </svg>
-                    <p class="text-sm text-slate-500 mb-1">
-                        <span class="text-teal-600 font-medium">Klik untuk pilih file</span> atau drag & drop
-                    </p>
-                    <p class="text-xs text-slate-400" id="fileNameDisplay">Belum ada file dipilih</p>
-                    <input type="file" id="fileInput" name="file" accept=".xlsx" class="hidden">
-                    </div>
-                </form>
-            </div>
-            <div id="uploadProgress" class="hidden mt-4">
-                <div class="flex items-center gap-3">
-                    <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    <span class="text-sm text-slate-700" id="progressText">Memproses file...</span>
-                </div>
-            </div>
-            <div id="importResult" class="hidden mt-4 p-4 rounded-lg border text-sm"></div>
-        </div>
-        <div id="importFormFooter" class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-            <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                Batal
-            </button>
-            <button type="button" id="uploadBtn" onclick="uploadImport()" disabled
-                    class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                Upload & Proses
-            </button>
-        </div>
-    </div>
-</div>
-@endpush
-
 @push('scripts')
 <script>
 var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
 var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
 var kondisiOrder = ['good', 'alarm', 'danger', 'visual_bad'];
-
-var importLogId = null;
-var pollInterval = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadChartData();
@@ -243,237 +171,40 @@ document.addEventListener('DOMContentLoaded', function() {
             loadChartData();
         });
     });
-
-    // Drag & drop event listeners
-    var dropZone = document.getElementById('dropZone');
-    var dragFileInput = document.getElementById('fileInput');
-
-    if (dropZone && dragFileInput) {
-        dropZone.addEventListener('click', function() {
-            dragFileInput.click();
-        });
-
-        dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            dropZone.classList.add('border-teal-500', 'bg-teal-50');
-        });
-
-        dropZone.addEventListener('dragleave', function() {
-            dropZone.classList.remove('border-teal-500', 'bg-teal-50');
-        });
-
-        dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dropZone.classList.remove('border-teal-500', 'bg-teal-50');
-            if (e.dataTransfer.files.length) {
-                dragFileInput.files = e.dataTransfer.files;
-                onFileSelect();
-            }
-        });
-
-        dragFileInput.addEventListener('change', onFileSelect);
-    }
 });
 
-function openImportModal() {
-    document.getElementById('importModal').classList.remove('hidden');
-    document.getElementById('importResult').classList.add('hidden');
-    document.getElementById('uploadProgress').classList.add('hidden');
-    document.getElementById('dropZoneContainer').style.display = '';
-    document.getElementById('fileInput').value = '';
-    document.getElementById('fileNameDisplay').textContent = 'Belum ada file dipilih';
-    document.getElementById('uploadBtn').disabled = true;
-    document.getElementById('importFormFooter').classList.remove('hidden');
-}
+function syncGoogleSheets() {
+    if (!confirm('Sync data dari Google Sheets? Data CM & Finding CM akan ditarik dari spreadsheet online.')) return;
 
-function closeImportModal() {
-    document.getElementById('importModal').classList.add('hidden');
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
-}
+    var btn = document.getElementById('syncSheetsBtn');
+    var originalHtml = btn ? btn.innerHTML : '';
 
-function onFileSelect() {
-    var file = document.getElementById('fileInput').files[0];
-    if (file) {
-        document.getElementById('fileNameDisplay').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-        document.getElementById('uploadBtn').disabled = false;
-    } else {
-        document.getElementById('fileNameDisplay').textContent = 'Belum ada file dipilih';
-        document.getElementById('uploadBtn').disabled = true;
-    }
-}
-
-function uploadImport() {
-    var file = document.getElementById('fileInput').files[0];
-    if (!file) {
-        showImportResult('error', 'Silakan pilih file terlebih dahulu.');
-        return;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Menyinkronkan...';
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-        showImportResult('error', 'Ukuran file maksimal 10MB.');
-        return;
-    }
-
-    var formData = new FormData();
-    formData.append('file', file);
-    formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-
-    document.getElementById('uploadProgress').classList.remove('hidden');
-    document.getElementById('importFormFooter').classList.add('hidden');
-    document.getElementById('dropZoneContainer').style.display = 'none';
-    document.getElementById('uploadBtn').disabled = true;
-    document.getElementById('importResult').classList.add('hidden');
-    document.getElementById('progressText').textContent = 'Mengupload file...';
-
-    fetch('{{ route("cm.import.upload") }}', {
+    fetch('{{ route('cm.sync-google-sheets') }}', {
         method: 'POST',
-        body: formData,
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
             'Accept': 'application/json'
         }
     })
-    .then(function(r) {
-        var contentType = r.headers.get('Content-Type') || '';
-        return r.text().then(function(text) {
-            if (contentType.indexOf('application/json') !== -1) {
-                try {
-                    return {ok: r.ok, json: JSON.parse(text)};
-                } catch (e) {
-                    return {ok: false, json: {message: text}};
-                }
-            }
-            // Response bukan JSON — coba ambil pesan error dari halaman HTML
-            var pesan = 'Terjadi kesalahan pada server.';
-            if (r.status === 419) {
-                pesan = 'Sesi login telah berakhir. Silakan muat ulang halaman (F5) dan coba lagi.';
-            } else if (r.status === 413) {
-                pesan = 'File terlalu besar. Pastikan ukuran file di bawah 10MB dan tidak melebihi batas upload server.';
-            } else if (r.status === 422) {
-                pesan = 'File tidak valid. Pastikan format .xlsx dan sesuai ketentuan.';
-            }
-            return {ok: false, json: {message: pesan}};
-        });
-    })
-    .then(function(resp) {
-        if (resp.json && resp.json.success) {
-            document.getElementById('progressText').textContent = 'Upload selesai, memproses data...';
-            importLogId = resp.json.import_log_id;
-            startPolling();
-        } else {
-            showImportResult('error', (resp.json && resp.json.message) || 'Gagal mengupload file.');
-            document.getElementById('uploadProgress').classList.add('hidden');
-            document.getElementById('importFormFooter').classList.remove('hidden');
-            document.getElementById('dropZoneContainer').style.display = '';
-        }
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        alert(data.message || 'Sync selesai.');
+        if (data.success) window.location.reload();
     })
     .catch(function(err) {
-        showImportResult('error', 'Terjadi kesalahan saat mengupload: ' + err.message);
-        document.getElementById('uploadProgress').classList.add('hidden');
-        document.getElementById('importFormFooter').classList.remove('hidden');
-        document.getElementById('dropZoneContainer').style.display = '';
-    });
-}
-
-function startPolling() {
-    if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(function() {
-        fetch('{{ route("cm.import.status", ["id" => "__ID__"]) }}'.replace('__ID__', importLogId), {
-            headers: {
-                'Accept': 'application/json'
-            }
-        })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.status === 'completed' || data.status === 'failed') {
-                    clearInterval(pollInterval);
-                    pollInterval = null;
-                    document.getElementById('uploadProgress').classList.add('hidden');
-                    showImportResult(data.status === 'completed' ? 'success' : 'error', formatResult(data));
-                    document.getElementById('uploadBtn').disabled = false;
-                    if (data.status === 'completed' && typeof loadChartData === 'function') {
-                        loadChartData();
-                    }
-                } else {
-                    var processed = data.total_baris || 0;
-                    var totalRead = data.total_dibaca || 0;
-                    var progressMsg = 'Memproses data... (' + processed.toLocaleString('id-ID') + ' baris diproses';
-                    if (totalRead > processed) {
-                        progressMsg += ' dari ±' + totalRead.toLocaleString('id-ID');
-                    }
-                    progressMsg += ')';
-                    document.getElementById('progressText').textContent = progressMsg;
-                }
-            });
-    }, 2000);
-}
-
-function formatResult(data) {
-    if (data.status === 'failed') {
-        var errors = data.detail_error || [];
-        var msg = 'Import gagal diproses.';
-        if (errors.length > 0) {
-            msg += '<ul class="mt-2 list-disc list-inside text-red-600">';
-            errors.forEach(function(e) {
-                if (typeof e === 'object') {
-                    msg += '<li>Baris ' + e.baris + ': ' + e.pesan + '</li>';
-                } else {
-                    msg += '<li>' + e + '</li>';
-                }
-            });
-            msg += '</ul>';
+        alert('Terjadi kesalahan saat sync: ' + err.message);
+    })
+    .finally(function() {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         }
-        return msg;
-    }
-
-    var html = '<div class="font-medium text-emerald-700 mb-2">Import Berhasil!</div>';
-    html += '<table class="w-full text-sm">';
-    html += '<tr><td class="py-1 text-slate-600">Total baris diproses</td><td class="py-1 font-semibold text-right">' + (data.total_baris || 0) + '</td></tr>';
-    html += '<tr><td class="py-1 text-slate-600">Baris baru (insert)</td><td class="py-1 font-semibold text-right text-teal-600">' + (data.insert_baru || 0) + '</td></tr>';
-    html += '<tr><td class="py-1 text-slate-600">Baris terupdate</td><td class="py-1 font-semibold text-right text-amber-600">' + (data.update_existing || 0) + '</td></tr>';
-    html += '<tr><td class="py-1 text-slate-600">Equipment belum terdaftar</td><td class="py-1 font-semibold text-right text-orange-600">' + (data.unregistered || 0) + '</td></tr>';
-    html += '<tr><td class="py-1 text-slate-600">Baris gagal</td><td class="py-1 font-semibold text-right text-red-600">' + (data.gagal || 0) + '</td></tr>';
-    html += '</table>';
-
-    if (data.detail_unregistered && data.detail_unregistered.length > 0) {
-        html += '<div class="mt-3 pt-3 border-t border-slate-200">';
-        html += '<p class="text-xs text-slate-500 mb-1">Equipment Tag yang belum terdaftar (tetap dibuat):</p>';
-        html += '<div class="text-xs text-slate-600 max-h-24 overflow-y-auto">';
-        data.detail_unregistered.forEach(function(tag) {
-            html += '<span class="inline-block bg-slate-100 rounded px-2 py-0.5 mr-1 mb-1">' + tag + '</span>';
-        });
-        html += '</div></div>';
-    }
-
-    if (data.detail_error && data.detail_error.length > 0) {
-        html += '<div class="mt-3 pt-3 border-t border-slate-200">';
-        html += '<p class="text-xs text-slate-500 mb-1">Error detail:</p>';
-        html += '<ul class="text-xs text-red-500 list-disc list-inside max-h-24 overflow-y-auto">';
-        data.detail_error.forEach(function(e) {
-            if (typeof e === 'object') {
-                html += '<li>Baris ' + e.baris + ': ' + e.pesan + '</li>';
-            } else {
-                html += '<li>' + e + '</li>';
-            }
-        });
-        html += '</ul></div>';
-    }
-
-    return html;
-}
-
-function showImportResult(type, message) {
-    var el = document.getElementById('importResult');
-    el.classList.remove('hidden');
-    if (type === 'error') {
-        el.className = 'mt-4 p-4 rounded-lg border text-sm bg-red-50 border-red-200 text-red-700';
-    } else {
-        el.className = 'mt-4 p-4 rounded-lg border text-sm bg-emerald-50 border-emerald-200 text-emerald-700';
-    }
-    el.innerHTML = message;
+    });
 }
 
 function loadChartData() {
@@ -614,6 +345,7 @@ function renderDonutChart(donutData) {
         ctx.fillRect(legendX, ly - 4, 12, 12);
         ctx.fillStyle = '#475569';
         ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
         ctx.fillText(pt + ' (' + pct + '%)', legendX + 18, ly + 2);
         ly += 20;
     });

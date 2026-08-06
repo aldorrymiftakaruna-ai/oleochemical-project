@@ -11,9 +11,13 @@ use App\Models\CmMonthlyTracking;
 use App\Models\CmReading;
 use App\Models\Report;
 use App\Models\WorkOrder;
+use App\Jobs\ProcessCmExcelImport;
+use App\Jobs\SyncGoogleSheetsJob;
+use App\Services\Telegram\PhotoStorageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Rap2hpoutre\FastExcel\FastExcel;
 
 class CmController extends Controller
@@ -29,7 +33,10 @@ class CmController extends Controller
         $filterStatus = $request->get('status', '');
 
         // Query dasar dengan filter
-        $baseQuery = CmReading::query();
+        // Hanya baris dengan minimal satu nilai pengukuran aktual (> 0) yang
+        // dihitung — baris semua 0/strip dianggap tidak ada pembacaan.
+        $baseQuery = CmReading::query()
+            ->whereRaw($this->measureSql());
         if ($filterPt) {
             $baseQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -217,31 +224,63 @@ class CmController extends Controller
         $tahunIni = (int) $filterTahun;
         $bulanIni = (int) now()->format('n');
 
-        // Semua equipment
+        // Bulan pertama yang dinilai untuk tahun terpilih.
+        // Reporting monitoring baru dimulai Maret 2026, jadi Jan & Feb 2026
+        // diabaikan (tidak dihitung progress maupun ditampilkan sebagai belum).
+        $bulanMulai = (($tahunIni === 2026) ? 3 : 1);
+
+        // Semua equipment (termasuk yang belum pernah diambil reading, karena
+        // equipment bisa valid tetapi datanya memang belum diambil manpower).
         $equipments = CmEquipment::with(['monthlyTrackings' => fn($q) => $q->where('tahun', $tahunIni)])
             ->orderBy('pt_location')
             ->orderBy('equipment_tag')
             ->get();
 
-        // Hitung progress per equipment
-        $equipments->each(function ($eq) use ($tahunIni, $bulanIni) {
-            $totalBulan = $tahunIni < now()->year ? 12 : $bulanIni;
-            $sudahCount = $eq->monthlyTrackings->where('status', 'sudah')->count();
-            $eq->progress_pct = $totalBulan > 0 ? round(($sudahCount / $totalBulan) * 100, 0) : 0;
-            $eq->sudah_count = $sudahCount;
+        // Hitung progress per equipment.
+        // Bulan "free" (equipment tidak running/stop) dianggap tercakup dan
+        // tidak menurunkan progress, karena bukan keterlambatan sungguhan.
+        $equipments->each(function ($eq) use ($tahunIni, $bulanIni, $bulanMulai) {
+            // Jumlah bulan yang dinilai pada rentang aktif.
+            $totalBulan = ($tahunIni < now()->year)
+                ? 12
+                : ($bulanIni - $bulanMulai + 1);
+            $totalBulan = max($totalBulan, 0);
+            $list = $eq->monthlyTrackings->whereIn('status', ['sudah', 'free']);
+            $coveredCount = $list->filter(fn($t) => $t->bulan >= $bulanMulai)->count();
+            $eq->progress_pct = $totalBulan > 0 ? round(($coveredCount / $totalBulan) * 100, 0) : 0;
+            $eq->covered_count = $coveredCount;
+            $eq->sudah_count = $list->where('status', 'sudah')->count();
+            $eq->free_count = $list->where('status', 'free')->count();
             $eq->total_bulan = $totalBulan;
         });
 
-        // Kelompokkan alert: equipment yang belum ada data bulan berjalan
+        // Kelompokkan alert: equipment yang belum ada data bulan berjalan.
+        // Equipment berstatus "free" (stop) di bulan berjalan TIDAK dianggap
+        // belum; hanya yang benar-benar belum tercatat (belum) yang di-alert.
         $alertEquipments = CmEquipment::whereDoesntHave('monthlyTrackings', function ($q) use ($tahunIni, $bulanIni) {
-            $q->where('tahun', $tahunIni)->where('bulan', $bulanIni)->where('status', 'sudah');
-        })->with(['monthlyTrackings' => fn($q) => $q->where('tahun', $tahunIni)->orderBy('bulan', 'desc')])
+                $q->where('tahun', $tahunIni)
+                    ->where('bulan', $bulanIni)
+                    ->whereIn('status', ['sudah', 'free']);
+            })->with(['monthlyTrackings' => fn($q) => $q->where('tahun', $tahunIni)->orderBy('bulan', 'desc')])
             ->get();
 
-        // Data terakhir bulan apa per equipment untuk alert
-        $alertEquipments->each(function ($eq) {
-            $lastTrack = $eq->monthlyTrackings->first();
-            $eq->last_month_label = $lastTrack ? $this->bulanLabel($lastTrack->bulan) : 'Belum pernah ada data';
+        // Data terakhir bulan apa per equipment untuk alert.
+        // Mengambil bulan TERBESAR yang berstatus "sudah" (data benar-benar
+        // diambil), bukan sekadar baris tracking terbesar (yang bisa berupa
+        // bulan masa depan berstatus "belum").
+        $alertEquipments->each(function ($eq) use ($tahunIni, $bulanIni) {
+            $lastTrack = $eq->monthlyTrackings
+                ->where('status', 'sudah')
+                ->sortByDesc('bulan')
+                ->first();
+
+            if ($lastTrack) {
+                $eq->last_month_label = $this->bulanLabel($lastTrack->bulan);
+            } elseif ($tahunIni >= now()->year) {
+                $eq->last_month_label = 'belum ada data';
+            } else {
+                $eq->last_month_label = 'tidak ada di ' . $tahunIni;
+            }
         });
 
         // Filter hide done
@@ -249,13 +288,51 @@ class CmController extends Controller
             $equipments = $equipments->filter(fn($eq) => $eq->progress_pct < 100);
         }
 
+        // Insight: equipment yang 2 bulan TERAKHIR BERTURUT tidak ada data "sudah".
+        // Fokus pada bulan berjalan dan bulan sebelumnya; bulan yang lebih lama
+        // (mis. Mar-Apr) tidak lagi di-scoring karena sudah lewat / teratasi.
+        // Masuk insight bila KEDUA bulan terakhir berstatus bukan "sudah"
+        // (belum-belum, free-free, atau belum-free / free-belum). Stop 2 bulan
+        // berturut pun dianggap bermasalah dan wajib di-arrange untuk running.
+        // Hanya jika salah satu bulan tersebut "sudah" -> tidak masuk insight.
+        $bulanSebelum = $bulanIni - 1;
+        $insightEntities = [];
+        if ($bulanSebelum >= $bulanMulai) {
+            foreach ($equipments as $eq) {
+                $trackIni = $eq->monthlyTrackings->firstWhere('bulan', $bulanIni);
+                $trackSebelum = $eq->monthlyTrackings->firstWhere('bulan', $bulanSebelum);
+
+                if ($trackIni && $trackSebelum
+                    && $trackIni->status !== 'sudah'
+                    && $trackSebelum->status !== 'sudah') {
+                    $eq->insight_bln = [$bulanSebelum, $bulanIni];
+                    $eq->insight_jml = 2;
+                    $eq->insight_keterangan = $this->insightKeterangan($trackIni->status, $trackSebelum->status);
+                    $insightEntities[] = $eq;
+                }
+            }
+        }
+
+        // Tambahkan label bulan & tautan pada equipment insight.
+        foreach ($insightEntities as $eq) {
+            $eq->insight_bulan_label = collect($eq->insight_bln)
+                ->map(fn($b) => $this->bulanLabel((int) $b))
+                ->implode(', ');
+        }
+        $insightEntities = collect($insightEntities);
+
         $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
         $tahunList = range(now()->year - 2, now()->year);
+
+        // Jumlah total equipment (penyebut pada ringkasan "X dari Y belum")
+        $totalEquipments = CmEquipment::count();
+        $belumBulanIni = $alertEquipments->count();
 
         return view('cm.monitoring', compact(
             'equipments', 'ptList', 'tahunList',
             'filterTahun', 'hideDone', 'alertEquipments',
-            'tahunIni', 'bulanIni'
+            'tahunIni', 'bulanIni', 'totalEquipments', 'belumBulanIni',
+            'bulanMulai', 'insightEntities'
         ));
     }
 
@@ -269,19 +346,29 @@ class CmController extends Controller
      */
     public function equipmentShow(Request $request, string $tag)
     {
-        $range = $request->get('range', '30'); // default 30 hari
+        $range = $request->get('range', (string) now()->year); // default tahun berjalan
+
+        // Threshold untuk garis bantu di chart trend
+        $vibThresholds = config('cm.vibration_insight.thresholds', ['alarm' => 7.1, 'danger' => 11.2]);
+        $tempThreshold = config('cm.temperature_high_threshold', 80); // konsisten dengan card stat Temp Maks
 
         $equipment = CmEquipment::with(['asset.company', 'findings'])
             ->where('equipment_tag', $tag)
             ->firstOrFail();
+
+        // Asset manual (data_source = 'manual') bukan data SAP asli — bisa
+        // berupa data sisa percobaan edit. Jangan ditampilkan sebagai data
+        // SAP di halaman ini; perlakukan seperti equipment tanpa asset.
+        if ($equipment->asset?->data_source === 'manual') {
+            $equipment->setRelation('asset', null);
+        }
 
         // Query readings dengan filter tanggal
         $filteredQuery = $equipment->readings()
             ->orderBy('tanggal', 'desc');
 
         if ($range !== 'all') {
-            $days = (int) $range;
-            $filteredQuery->where('tanggal', '>=', now()->subDays($days));
+            $filteredQuery->whereYear('tanggal', (int) $range);
         }
 
         // Ambil semua readings yang difilter untuk data ringkasan
@@ -320,35 +407,52 @@ class CmController extends Controller
         }
 
         // Data JSON untuk Chart.js (sort ascending by tanggal)
-        $chartData = $filteredReadings->sortBy('tanggal')->values()->map(fn($r) => [
-            'tanggal'    => $r->tanggal->format('Y-m-d'),
-            'ndev_motor' => $r->ndev_motor,
-            'ndeh_motor' => $r->ndeh_motor,
-            'ndea_motor' => $r->ndea_motor,
-            'dev_motor'  => $r->dev_motor,
-            'deh_motor'  => $r->deh_motor,
-            'dea_motor'  => $r->dea_motor,
-            'ndev_pompa' => $r->ndev_pompa,
-            'ndeh_pompa' => $r->ndeh_pompa,
-            'ndea_pompa'    => $r->ndea_pompa,
-            'dev_pompa'     => $r->dev_pompa,
-            'deh_pompa'     => $r->deh_pompa,
-            'dea_pompa'     => $r->dea_pompa,
-            'temp_de_motor' => $r->temp_de_motor,
-            'temp_nde_motor'=> $r->temp_nde_motor,
-            'temp_de_pompa' => $r->temp_de_pompa,
-            'temp_nde_pompa'=> $r->temp_nde_pompa,
-        ]);
+        // Nilai 0 (benar-benar 0,000) diabaikan (diubah jadi null) karena
+        // dianggap data tidak diambil — Chart.js otomatis membuat gap.
+        $trendKeys = [
+            'ndev_motor', 'ndeh_motor', 'ndea_motor',
+            'dev_motor',  'deh_motor',  'dea_motor',
+            'ndev_pompa', 'ndeh_pompa', 'ndea_pompa',
+            'dev_pompa',  'deh_pompa',  'dea_pompa',
+            'temp_de_motor', 'temp_nde_motor',
+            'temp_de_pompa', 'temp_nde_pompa',
+        ];
+        $chartData = $filteredReadings->sortBy('tanggal')->values()->map(function ($r) use ($trendKeys) {
+            $row = ['tanggal' => $r->tanggal->format('Y-m-d')];
+            foreach ($trendKeys as $key) {
+                $value = $r->{$key};
+                $row[$key] = ($value === null || (float) $value == 0) ? null : (float) $value;
+            }
+            return $row;
+        });
 
         // Readings dengan pagination (10 per halaman) — tetap difilter
         $paginatedQuery = $equipment->readings()
             ->orderBy('tanggal', 'desc');
 
         if ($range !== 'all') {
-            $paginatedQuery->where('tanggal', '>=', now()->subDays((int) $range));
+            $paginatedQuery->whereYear('tanggal', (int) $range);
         }
 
         $readings = $paginatedQuery->paginate(10)->appends(['range' => $range]);
+
+        // ------------------------------------------------------------------
+        // Total Readings Aktual & Visual Bad
+        // ------------------------------------------------------------------
+        // "Total Readings" = baris yang punya minimal satu nilai pengukuran
+        // aktual (> 0). Baris yang semua nilai pengukurannya 0/NULL (termasuk
+        // yang berstatus visual_bad) dianggap TIDAK ada pembacaan instrumen.
+        // Baris visual_bad dihitung terpisah karena merupakan catatan visual,
+        // bukan pengukuran.
+        $measureSql = $this->measureSql();
+
+        $totalReadings = $equipment->readings()
+            ->whereRaw($measureSql)
+            ->count();
+
+        $totalVisualBad = $equipment->readings()
+            ->where('kondisi', 'visual_bad')
+            ->count();
 
         // Hitung total findings open/closed
         $totalFindingsOpen   = $equipment->findings->where('status', 'open')->count();
@@ -371,12 +475,12 @@ class CmController extends Controller
 
         // Terapkan filter rentang waktu
         if ($range !== 'all') {
-            $days = (int) $range;
-            $failureReportsQuery->where(function ($q) use ($days) {
-                $q->where('tanggal_kejadian', '>=', now()->subDays($days))
-                  ->orWhere(function ($sq) use ($days) {
+            $year = (int) $range;
+            $failureReportsQuery->where(function ($q) use ($year) {
+                $q->whereYear('tanggal_kejadian', $year)
+                  ->orWhere(function ($sq) use ($year) {
                       $sq->whereNull('tanggal_kejadian')
-                         ->where('report_date', '>=', now()->subDays($days));
+                         ->whereYear('report_date', $year);
                   });
             });
         }
@@ -446,11 +550,15 @@ class CmController extends Controller
             'chartData',
             'readings',
             'range',
+            'totalReadings',
+            'totalVisualBad',
             'totalFindingsOpen',
             'totalFindingsClosed',
             'mtbfData',
             'vibrationInsight',
-            'availableYears'
+            'availableYears',
+            'vibThresholds',
+            'tempThreshold'
         ));
     }
 
@@ -494,6 +602,166 @@ class CmController extends Controller
         }
 
         return redirect()->route('cm.equipment-show', $tag)->with('success', 'Informasi spek berhasil diperbarui.');
+    }
+
+    /**
+     * Hapus satu reading (riwayat pembacaan) secara manual dari halaman
+     * detail equipment. Finding yang merujuk ke reading ini otomatis
+     * ter-lepas (FK cm_reading_id nullOnDelete), dan status tracking
+     * bulanan dihitung ulang untuk bulan reading tersebut.
+     *
+     * @param  CmReading $reading Reading yang akan dihapus
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function readingDestroy(CmReading $reading)
+    {
+        try {
+            $equipmentTag = $reading->equipment?->equipment_tag ?? '-';
+            $tanggal      = $reading->tanggal ? Carbon::parse($reading->tanggal)->format('d/m/Y') : '-';
+
+            $reading->delete();
+
+            // Hitung ulang tracking SETELAH delete, agar reading yang baru
+            // dihapus tidak ikut terhitung sebagai sisa di bulan tersebut.
+            $this->refreshMonthlyTrackingForReading($reading);
+
+            return back()->with('success', "Reading {$equipmentTag} ({$tanggal}) berhasil dihapus.");
+        } catch (\Exception $e) {
+            Log::error('Gagal hapus reading #' . $reading->id . ': ' . $e->getMessage());
+
+            return back()->with('error', 'Gagal menghapus reading. Silakan coba lagi.');
+        }
+    }
+
+    /**
+     * Hitung ulang status tracking bulanan untuk equipment & bulan dari
+     * reading yang akan dihapus. Jika tidak ada reading tersisa di bulan
+     * itu, baris tracking dihapus; jika masih ada, status ditentukan ulang
+     * dari sisa reading (ada yang START = sudah, hanya Stop = free).
+     *
+     * @param  CmReading $reading Reading yang sedang dihapus
+     * @return void
+     */
+    private function refreshMonthlyTrackingForReading(CmReading $reading): void
+    {
+        if (!$reading->tanggal) {
+            return;
+        }
+
+        $tahun = (int) $reading->tanggal->format('Y');
+        $bulan = (int) $reading->tanggal->format('n');
+
+        $sisaReadings = CmReading::where('cm_equipment_id', $reading->cm_equipment_id)
+            ->whereYear('tanggal', $tahun)
+            ->whereMonth('tanggal', $bulan)
+            ->get();
+
+        if ($sisaReadings->isEmpty()) {
+            CmMonthlyTracking::where('cm_equipment_id', $reading->cm_equipment_id)
+                ->where('tahun', $tahun)
+                ->where('bulan', $bulan)
+                ->delete();
+
+            return;
+        }
+
+        $adaStart = $sisaReadings->contains(function ($r) {
+            return str_contains(strtoupper(trim((string) $r->status)), 'START');
+        });
+
+        CmMonthlyTracking::updateOrCreate(
+            [
+                'cm_equipment_id' => $reading->cm_equipment_id,
+                'tahun'           => $tahun,
+                'bulan'           => $bulan,
+            ],
+            ['status' => $adaStart ? 'sudah' : 'free']
+        );
+    }
+
+    /**
+     * Hapus satu finding secara manual (dari halaman detail equipment atau
+     * daftar finding). Work order yang terhubung otomatis ter-lepas
+     * (FK linked_finding_id nullOnDelete) dan foto finding ikut dihapus
+     * dari storage.
+     *
+     * @param  CmFinding $finding Finding yang akan dihapus
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function findingDestroy(CmFinding $finding)
+    {
+        try {
+            $kode = $finding->kode_finding ?? '#' . $finding->id;
+
+            $fotoPaths = collect($finding->foto_urls ?? [])
+                ->push($finding->foto_url)
+                ->filter()
+                ->unique()
+                ->values()
+                ->toArray();
+
+            $finding->delete();
+
+            if (!empty($fotoPaths)) {
+                app(PhotoStorageService::class)->delete($fotoPaths);
+            }
+
+            return back()->with('success', "Finding {$kode} berhasil dihapus.");
+        } catch (\Exception $e) {
+            Log::error('Gagal hapus finding #' . $finding->id . ': ' . $e->getMessage());
+
+            return back()->with('error', 'Gagal menghapus finding. Silakan coba lagi.');
+        }
+    }
+
+    /**
+     * Tarik data CM langsung dari spreadsheet Google Sheets online.
+     * Spreadsheet di-download sebagai xlsx lalu import dijadwalkan lewat
+     * queued job yang sama dengan upload manual. Response JSON jika request
+     * meminta JSON (tombol sync di halaman Overview), selain itu redirect.
+     *
+     * @param  Request $request
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     */
+    public function syncGoogleSheets(Request $request)
+    {
+        set_time_limit(300);
+
+        try {
+            $results = SyncGoogleSheetsJob::runSync();
+        } catch (\Exception $e) {
+            Log::error('Sync Google Sheets gagal: ' . $e->getMessage());
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Sync Google Sheets gagal: ' . $e->getMessage(),
+                ]);
+            }
+
+            return back()->with('error', 'Sync Google Sheets gagal: ' . $e->getMessage());
+        }
+
+        $messages = [];
+        foreach ($results as $key => $result) {
+            $label      = $key === 'data_cm' ? 'Data CM' : 'Finding CM';
+            $messages[] = $label . ': ' . $result['message'];
+        }
+
+        $hasError = collect($results)->contains('status', 'error');
+        $summary  = 'Sync Google Sheets: ' . implode(' | ', $messages);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => !$hasError,
+                'message' => $summary,
+            ]);
+        }
+
+        return back()->with(
+            $hasError ? 'warning' : 'success',
+            $summary
+        );
     }
 
     /**
@@ -1054,7 +1322,8 @@ class CmController extends Controller
         $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
 
-        $query = CmReading::query();
+        $query = CmReading::query()
+            ->whereRaw($this->measureSql());
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -1185,6 +1454,49 @@ class CmController extends Controller
             9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
         ];
         return $labels[$bulan] ?? '';
+    }
+
+    /**
+     * Buat keterangan singkat untuk insight 2 bulan terakhir tanpa data "sudah".
+     *
+     * @param  string  $statusIni      Status pada bulan berjalan.
+     * @param  string  $statusSebelum  Status pada bulan sebelumnya.
+     */
+    private function insightKeterangan(string $statusIni, string $statusSebelum): string
+    {
+        if ($statusIni === 'free' && $statusSebelum === 'free') {
+            return 'stop 2 bulan berturut';
+        }
+        if ($statusIni === 'free' || $statusSebelum === 'free') {
+            return 'belum / stop';
+        }
+        return 'belum 2 bulan berturut';
+    }
+
+    /**
+     * SQL condition untuk baris yang punya minimal satu nilai pengukuran
+     * aktual (> 0). Baris yang semua nilai pengukurannya 0/NULL dianggap
+     * TIDAK ada pembacaan instrumen (0 / strip), sehingga tidak dihitung
+     * dalam Total Records / Total Readings.
+     *
+     * @return string
+     */
+    private function measureSql(): string
+    {
+        $columns = [
+            'ndev_motor', 'ndeh_motor', 'ndea_motor',
+            'dev_motor', 'deh_motor', 'dea_motor',
+            'ndev_pompa', 'ndeh_pompa', 'ndea_pompa',
+            'dev_pompa', 'deh_pompa', 'dea_pompa',
+            'ndev_screw', 'ndeh_screw', 'ndea_screw',
+            'dev_screw', 'deh_screw', 'dea_screw',
+            'temp_de_motor', 'temp_nde_motor',
+            'temp_de_pompa', 'temp_nde_pompa',
+            'temp_de_screw', 'temp_nde_screw',
+            'ampere', 'discharge_pressure',
+        ];
+
+        return '(' . implode(' OR ', array_map(fn($c) => "`{$c}` > 0", $columns)) . ')';
     }
 
     // ====================================================================

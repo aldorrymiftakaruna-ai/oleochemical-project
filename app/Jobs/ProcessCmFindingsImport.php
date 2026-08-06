@@ -273,19 +273,15 @@ class ProcessCmFindingsImport implements ShouldQueue
             $tanggalAkhir = $status === 'closed' && $dateAction ? Carbon::parse($dateAction) : $now;
             $hariOpen = (int) $tanggalAwal->diffInDays($tanggalAkhir);
 
-            // Cari atau buat equipment
+            // Cari equipment. Equipment CM TIDAK dibuat otomatis dari data finding:
+            // finding untuk tag yang belum terdaftar di equipment CM dicatat
+            // sebagai unregistered (bukan membuat equipment baru yang bisa
+            // mencemari daftar CM dengan equipment tanpa data reading).
             if (!isset($preloadEq[$equipmentTag])) {
-                $eq = CmEquipment::updateOrCreate(
-                    ['equipment_tag' => $equipmentTag],
-                    [
-                        'pt_location' => $this->cellVal($idxPt !== null ? ($row[$idxPt] ?? null) : null) ?? 'Unknown',
-                        'plant'       => $this->cellVal($idxPlant !== null ? ($row[$idxPlant] ?? null) : null) ?? 'Unknown',
-                    ]
-                );
-                $preloadEq[$equipmentTag] = $eq->id;
-                $result['created_equipment_ids'][] = $eq->id;
                 $result['unregistered_tags'][] = $equipmentTag;
-                $result['unregistered']++;
+                $result['unregistered'] = ($result['unregistered'] ?? 0) + 1;
+                $result['total_diproses'] = ($result['total_diproses'] ?? 0) + 1;
+                continue;
             }
             $eqId = $preloadEq[$equipmentTag];
 

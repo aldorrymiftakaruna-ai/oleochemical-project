@@ -64,4 +64,23 @@ return [
         'status_filter' => ['alarm', 'danger'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Google Sheets — Sumber Data Sync
+    |--------------------------------------------------------------------------
+    |
+    | Link spreadsheet online (Google Sheets) yang menjadi sumber data CM.
+    | Di-download sebagai xlsx (export) lalu diimport lewat jalur queued job
+    | yang sama dengan upload manual. Link harus berstatus "Anyone with the
+    | link can view" agar bisa di-download tanpa Google Cloud API.
+    |
+    */
+    'google_sheets' => [
+        // Spreadsheet Data CM (sheet: Data AppSheet & Status CM)
+        'data_cm_url' => env('GOOGLE_SHEETS_DATA_CM_URL'),
+
+        // Spreadsheet Finding CM (sheet: Finding CM)
+        'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL'),
+    ],
+
 ];
